@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"id":"Amsterdam"},"geometry":{"coordinates":[4.897089090811676,52.373954185678286],"type":"Point"}},{"type":"Feature","properties":{"id":"Brussel"},"geometry":{"coordinates":[4.3517823792305705,50.843673880319955],"type":"Point"}}]}

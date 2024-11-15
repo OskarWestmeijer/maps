@@ -1,0 +1,13 @@
+{
+"type": "FeatureCollection",
+"name": "nl_hills",
+"features": [
+{ "type": "Feature", "properties": { "id": "Sint-Pietersberg +109m" }, "geometry": { "type": "Point", "coordinates": [ 5.687463847295305, 50.826896892414055 ] } },
+{ "type": "Feature", "properties": { "id": "Signaal Imbosch +110m" }, "geometry": { "type": "Point", "coordinates": [ 5.993264668410319, 52.037952934656857 ] } },
+{ "type": "Feature", "properties": { "id": "Tankenberg +85m" }, "geometry": { "type": "Point", "coordinates": [ 6.955691531493301, 52.323392632163063 ] } },
+{ "type": "Feature", "properties": { "id": "Amerongse Berg +68m" }, "geometry": { "type": "Point", "coordinates": [ 5.482951487057449, 52.00809847744415 ] } },
+{ "type": "Feature", "properties": { "id": "Grote Koningsbelt +75m" }, "geometry": { "type": "Point", "coordinates": [ 6.416354887048612, 52.333314208069964 ] } },
+{ "type": "Feature", "properties": { "id": "Hettenheuvel +91m" }, "geometry": { "type": "Point", "coordinates": [ 6.23452241938395, 51.92113362089205 ] } },
+{ "type": "Feature", "properties": { "id": "Kiekberg +77m" }, "geometry": { "type": "Point", "coordinates": [ 5.919530155297963, 51.746568789925021 ] } }
+]
+}

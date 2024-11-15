@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"name": "vaalserberg",
+"features": [
+{ "type": "Feature", "properties": { "id": "Vaalserberg +322m" }, "geometry": { "type": "Point", "coordinates": [ 5.975302903208814, 50.763192528030345 ] } }
+]
+}

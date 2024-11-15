@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"name": "luchthaven",
+"features": [
+{ "type": "Feature", "properties": { "id": "AMS" }, "geometry": { "type": "Point", "coordinates": [ 4.762185304448735, 52.309416144626312 ] } }
+]
+}
