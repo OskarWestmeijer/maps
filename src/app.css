@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+    @apply flex flex-col h-screen m-0 bg-primary; /* Ensure full height and background color */
+  }
+  
+  #app {
+    @apply flex-grow;
+  }
+  
+  footer {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    @apply mt-0 bg-accent;
+  }
+  
