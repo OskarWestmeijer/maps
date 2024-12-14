@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-    @apply flex flex-col h-screen m-0 bg-primary; /* Ensure full height and background color */
+    @apply flex flex-col h-screen m-0 bg-base-100; /* Ensure full height and background color */
   }
   
   #app {
