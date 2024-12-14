@@ -11,8 +11,7 @@ body {
   }
   
   footer {
-    padding-top: 10px;
-    padding-bottom: 10px;
-    @apply mt-0 bg-accent;
+    padding-bottom: 30px;
+    @apply mt-0 bg-base-100;
   }
   

@@ -1,0 +1,21 @@
+services:
+  homepage:
+    image: oskarwestmeijer/maps:latest
+    container_name: homepage
+    deploy:
+      resources:
+        limits:
+          memory: 100m
+        reservations:
+          memory: 100m
+    expose:
+      - '80'
+      - '443'
+    restart: always
+    volumes:
+      - ./nginx/conf.d/:/etc/nginx/conf.d/:ro
+
+networks:
+  default:
+    name: proxy
+    external: true

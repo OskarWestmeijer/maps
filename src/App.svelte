@@ -5,7 +5,7 @@
   <div class="content prose">
     <div class="map-element">
       <img
-        src="/nl12.jpg"
+        src="/nl12_light.jpg"
         alt="Netherlands height map. Created by Oskar Westmeijer with QGIS."
         class="image"
       />
@@ -29,16 +29,17 @@
     </div>
     <div class="map-element">
       <img
-        src="/de_forrest7.jpg"
+        src="/de_forrest7_light.jpg"
         alt="Germany forest coverage map. Created by Oskar Westmeijer with QGIS."
         class="image"
       />
       <h3 class="divider divider-accent">Germany forest coverage</h3>
       <p>
-        In 2020 Germany was covered by 29,8% with forest. However, forested
-        areas in Germany have been shrinking, with a total decline of approximately
-        6.6% between 2012 and 2022. Germany is home to several famous forests,
-        each with its unique history and significance:
+        In 2020 Germany was covered by <a
+          href="https://ec.europa.eu/eurostat/web/products-eurostat-news/-/edn-20210321-1#:~:text=In%202020%2C%20the%20EU%20had,1990%20(145%20million%20hectares).&text=In%20five%20EU%20Member%20States,%25)%20and%20Latvia%20(53%25)."
+          >32%</a
+        > with forest. Germany is home to several famous forests, each with its unique
+        history and significance:
       </p>
       <ul>
         <li>
@@ -70,21 +71,41 @@
     </div>
     <div class="map-element">
       <img
-        src="/nl_forrest2.jpg"
+        src="/nl_forrest2_light.jpg"
         alt="Netherlands forest coverage map. Created by Oskar Westmeijer with QGIS."
         class="image"
       />
       <h3 class="divider divider-accent">Netherlands forest coverage</h3>
-      <p>Large parts of the country are below sea level.</p>
+      <p>
+        In 2020, the Netherlands had a forest coverage of just 10%, making it
+        the second least forested country in the European Union after Malta
+        (1%). This figure is significantly below the <a
+          href="https://ec.europa.eu/eurostat/web/products-eurostat-news/-/edn-20210321-1#:~:text=In%202020%2C%20the%20EU%20had,1990%20(145%20million%20hectares).&text=In%20five%20EU%20Member%20States,%25)%20and%20Latvia%20(53%25)."
+          >EU average of 39%.</a
+        >
+        The Netherlands is a densely populated country. Despite that, it is home
+        to two notable forests:
+      </p>
+      <ul>
+        <li>Hoge Veluwe National Park</li>
+        <li>Utrechtse Heuvelrug National Park</li>
+      </ul>
     </div>
     <div class="map-element">
       <img
-        src="/nl_west_friesland.jpg"
+        src="/nl_west_friesland_light.jpg"
         alt="Map of West Friesland in the Netherlands. Created by Oskar Westmeijer with QGIS."
         class="image"
       />
       <h3 class="divider divider-accent">West Friesland, Netherlands</h3>
-      <p>Large parts of the country are below sea level.</p>
+      <p>
+        The Frisian tribes historically occupied regions along the North Sea
+        coast, stretching from Denmark through Germany to the northeastern and
+        northwestern parts of the Netherlands. During the Dutch Golden Age in
+        the 16th century, the towns of Hoorn and Enkhuizen flourished, becoming
+        extremely wealthy through trade. West Friesland is a distinct cultural
+        region within todays province of North Holland.
+      </p>
     </div>
   </div>
 </main>
