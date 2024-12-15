@@ -15,3 +15,9 @@ body {
     @apply mt-0 bg-base-100;
   }
   
+  /* Show social links only on wider screens */
+@media (max-width: 700px) {
+  .mobile-hide {
+    display: none;
+  }
+}
