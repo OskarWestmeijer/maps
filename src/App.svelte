@@ -71,7 +71,7 @@
     </div>
     <div class="map-element">
       <img
-        src="/nl_forrest2_light.jpg"
+        src="/nl_forest4_light.jpg"
         alt="Netherlands forest coverage map. Created by Oskar Westmeijer with QGIS."
         class="image"
       />
@@ -93,7 +93,7 @@
     </div>
     <div class="map-element">
       <img
-        src="/nl_west_friesland_light.jpg"
+        src="/nl_west_friesland3_light.jpg"
         alt="Map of West Friesland in the Netherlands. Created by Oskar Westmeijer with QGIS."
         class="image"
       />
