@@ -18,7 +18,7 @@
     "@tailwindcss/typography": "^0.5.16",
     "@tsconfig/svelte": "^5.0.4",
     "autoprefixer": "^10.4.21",
-    "daisyui": "^5.0.35",
+    "daisyui": "^5.0.37",
     "postcss": "^8.5.3",
     "svelte": "^5.32.1",
     "svelte-check": "^4.2.1",
