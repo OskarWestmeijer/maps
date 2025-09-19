@@ -14,6 +14,8 @@ services:
     restart: always
     volumes:
       - ./nginx/conf.d/:/etc/nginx/conf.d/:ro
+    labels:
+      log_category: "nginx"
 
 networks:
   default:
