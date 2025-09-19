@@ -15,6 +15,19 @@ I create thematic maps with the tool QGIS. Most of the data used for creating th
 - Nginx
 ```
 
+## Example map
+
+Check out the website for more maps.
+
+![Alt Netherlands elevation map](public/nl12_light.jpg)
+
+## Build & test
+
+```bash
+npm install
+npm run build
+```
+
 ## Local development
 
 ```bash
@@ -22,8 +35,19 @@ npm install
 npm run dev
 ```
 
-## Example map
+## Update dependencies
 
-Check out the website for more maps.
+Use ncu to update the dependencies. `npm install -g npm-check-updates`
 
-![Alt Netherlands elevation map](public/nl12_light.jpg)
+```bash
+# list possible updates
+ncu
+
+# granular updates
+ncu -u --target=patch
+ncu -u --target=minor
+
+# run major updates
+ncu -u
+npm install
+```
