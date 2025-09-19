@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@plugin "daisyui";
 
 body {
     @apply flex flex-col h-screen m-0 bg-base-100; /* Ensure full height and background color */
