@@ -33,6 +33,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend-build
+          path: ./build
       - name: login to DockerHub
         uses: docker/login-action@v3
         with:

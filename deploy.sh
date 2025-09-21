@@ -16,10 +16,10 @@ execute_command() {
 echo 'Start deploy maps script.'
 
 # Commands to execute
-compose_down="docker compose down"
+compose_down="docker compose -f cprod.yml down"
 list_images="docker images"
 rm_latest_maps="docker image rm oskarwestmeijer/maps:latest"
-compose_up="docker compose up -d"
+compose_up="docker compose -f cprod.yml up -d"
 
 # Execute the commands
 execute_command "$compose_down"

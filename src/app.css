@@ -1,6 +1,6 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
 @plugin "daisyui";
-@plugin "@tailwindcss/typography";
 
 @plugin "daisyui/theme" {
   name: "customtheme";
@@ -19,7 +19,6 @@
   --color-warning: #f7e488;
   --color-error: #f2b6b5;
 }
-
 
 body {
     @apply flex flex-col h-screen m-0 bg-base-100; /* Ensure full height and background color */
