@@ -18,7 +18,7 @@
     <div class="navbar-start">
       <div class="mobile-hide">
         <a
-          href="https://oskar-westmeijer.com"
+          href="https://maps.oskar-westmeijer.com"
           class="btn btn-ghost rounded-lg text-xl font-bold"
           >&#129517; Maps</a
         >
