@@ -10,7 +10,7 @@ I create thematic maps with the tool QGIS. Most of the data used for creating th
 ## Technologies
 
 ```
-- Svelte & Vite
+- Sveltekit & Vite
 - Tailwind & DaisyUi
 - Nginx
 ```
@@ -19,7 +19,7 @@ I create thematic maps with the tool QGIS. Most of the data used for creating th
 
 Check out the website for more maps.
 
-![Alt Netherlands elevation map](public/nl12_light.jpg)
+![Alt Netherlands elevation map](static/nl12_light.jpg)
 
 ## Build & test
 
