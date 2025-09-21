@@ -1,23 +1,17 @@
 services:
   maps:
-    image: oskarwestmeijer/maps:latest
-    container_name: maps
+    image: maps:local
+    container_name: maps-local
     deploy:
       resources:
         limits:
           memory: 100m
         reservations:
           memory: 100m
-    expose:
-      - '80'
-      - '443'
+    ports:
+      - "80:80"
     restart: always
     volumes:
       - ./nginx/conf.d/:/etc/nginx/conf.d/:ro
     labels:
       log_category: "nginx"
-
-networks:
-  default:
-    name: proxy
-    external: true

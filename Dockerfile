@@ -1,13 +1,8 @@
-# build-stage
-FROM node:22.19.0-alpine3.22 as build-stage
+# --- production only ---
+FROM nginx:1.26.2-alpine3.20-slim
 
-WORKDIR /usr/local/app
-COPY ./ ./
-RUN npm install
-RUN npm run build
+# Copy prebuilt SvelteKit output (make sure ./build exists from `npm run build`)
+COPY ./build /usr/share/nginx/html
 
-# production-stage
-FROM nginx:1.29.1-alpine3.22-slim as production-stage
-
-COPY --from=build-stage /usr/local/app/dist /usr/share/nginx/html
+EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
