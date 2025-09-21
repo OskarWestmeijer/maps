@@ -1,38 +1,63 @@
-# sv
+# maps
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+![main branch](https://github.com/OskarWestmeijer/maps/actions/workflows/main-build-test-release.yml/badge.svg)
+[![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/1pc14.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 
-## Creating a project
+I create thematic maps with the tool QGIS. Most of the data used for creating the map, is free and provided by the Copernicus project.
 
-If you're seeing this, you've probably already done this step. Congrats!
+- [https://maps.oskar-westmeijer.com](https://maps.oskar-westmeijer.com)
 
-```sh
-# create a new project in the current directory
-npx sv create
+## Technologies
 
-# create a new project in my-app
-npx sv create my-app
+```
+- Svelte & Vite
+- Tailwind & DaisyUi
+- Nginx
 ```
 
-## Developing
+## Example map
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Check out the website for more maps.
 
-```sh
-npm run dev
+![Alt Netherlands elevation map](public/nl12_light.jpg)
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+## Build & test
 
-## Building
-
-To create a production version of your app:
-
-```sh
+```bash
+npm install
 npm run build
 ```
 
-You can preview the production build with `npm run preview`.
+## Local development
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+```bash
+npm install
+npm run dev
+```
+
+### Local test deployment
+
+```bash
+docker images rm maps:local
+
+npm run build
+docker build -t maps:local .
+docker compose up
+```
+
+## Update dependencies
+
+Use ncu to update the dependencies. `npm install -g npm-check-updates`
+
+```bash
+# list possible updates
+ncu
+
+# granular updates
+ncu -u --target=patch
+ncu -u --target=minor
+
+# run major updates
+ncu -u
+npm install
+```
