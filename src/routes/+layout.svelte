@@ -26,7 +26,7 @@
     </div>
     <div class="navbar-center">
       <a href="/" class="btn btn-ghost text-xl">🗺️ Gallery</a>
-      <a href="/about" class="btn btn-ghost text-xl">🔮 About</a>
+      <a href="/about" class="btn btn-ghost text-xl">💡 About</a>
     </div>
     <div class="navbar-end">
       <div class="mobile-hide">
@@ -50,7 +50,7 @@
   <!-- Footer -->
   <footer class="footer footer-center py-6">
     <a href="https://oskar-westmeijer.com" class="btn btn-ghost text-xl">
-      Oskar Westmeijer &#129517; 2025
+      Oskar Westmeijer 🐨 2025
     </a>
   </footer>
 </div>
