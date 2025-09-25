@@ -6,7 +6,7 @@ export const maps = [
 		type: 'Topographic map',
 		year: '2024',
 		alt: 'Netherlands height map. Created by Oskar Westmeijer with QGIS.',
-		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/nl12_light.jpg',
+		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/nl12.jpg',
 		description: [
 			"Large parts of the Netherlands are below sea level. For centuries, the Dutch have been reclaiming land from the water. Areas reclaimed from the sea are called 'polders'. The technique to dry the land is relatively simple:"
 		],
@@ -25,7 +25,7 @@ export const maps = [
 		type: 'Thematic map',
 		year: '2024',
 		alt: 'Germany forest coverage map. Created by Oskar Westmeijer with QGIS.',
-		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/de_forrest7_light.jpg',
+		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/de_forrest7.jpg',
 		description: [
 			'In 2020 Germany was covered by 32% with forest. Germany is home to several famous forests, each with its unique history and significance:'
 		],
@@ -43,7 +43,7 @@ export const maps = [
 		type: 'Thematic map',
 		year: '2024',
 		alt: 'Netherlands forest coverage map. Created by Oskar Westmeijer with QGIS.',
-		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/nl_forest4_light.jpg',
+		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/nl_forest4.jpg',
 		description: [
 			'In 2020, the Netherlands had a forest coverage of just 10%, making it the second least forested country in the European Union after Malta (1%). This figure is significantly below the EU average of 39%. The Netherlands is a densely populated country. Despite that, it is home to two notable forests:'
 		],
@@ -57,7 +57,7 @@ export const maps = [
 		type: 'Thematic map',
 		year: '2024',
 		alt: 'Map of West Friesland in the Netherlands. Created by Oskar Westmeijer with QGIS.',
-		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/nl_west_friesland3_light.jpg',
+		hdLink: 'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/nl_west_friesland3.jpg',
 		description: [
 			'The Frisian tribes historically occupied regions along the North Sea coast, stretching from Denmark through Germany to the northeastern and northwestern parts of the Netherlands. During the Dutch Golden Age in the 16th century, the towns of Hoorn and Enkhuizen flourished, becoming extremely wealthy through trade. West Friesland is a distinct cultural region within todays province of North Holland.'
 		],
