@@ -28,7 +28,7 @@
 		{/if}
 	</div>
 
-	<div class="mt-6 flex flex-col gap-4 text-gray-700">
+	<div class="flex flex-col gap-4 text-gray-700">
 		{#if map.description}
 			{#each map.description as paragraph}
 				<p>{paragraph}</p>
@@ -50,7 +50,7 @@
 		{/if}
 	</div>
 
-	<div class="mt-6">
+	<div class="mt-6 mb-6">
 		<img
 			src={map.src}
 			alt={map.alt}

@@ -8,7 +8,6 @@
 <svelte:head>
 	<link rel="icon" href={favicon} />
 	<link rel="icon" href="/favicon.ico" type="image/x-icon" />
-	<title>Maps • Oskar Westmeijer</title>
 </svelte:head>
 
 <!-- Flex column wrapper -->
@@ -48,8 +47,8 @@
 
 	<!-- Footer -->
 	<footer class="footer-center footer py-6">
-		<a href="https://oskar-westmeijer.com" class="btn text-xl btn-ghost">
-			Oskar Westmeijer 🐨 2025
+		<a href="https://oskar-westmeijer.com" class="text-base">
+			Created by Oskar Westmeijer 🐨 2025
 		</a>
 	</footer>
 </div>
