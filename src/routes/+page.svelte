@@ -35,7 +35,7 @@
 	<div class="grid w-full max-w-6xl grid-cols-1 gap-6 sm:grid-cols-2">
 		{#each maps as map}
 			<a
-				href="#"
+				href="/gallery/nl-elevation"
 				class="group overflow-hidden rounded-xl shadow-lg transition-transform duration-300 hover:scale-105"
 			>
 				<img src={map.src} alt={map.alt} class="h-120 w-full object-cover" />
