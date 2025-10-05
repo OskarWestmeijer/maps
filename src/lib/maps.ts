@@ -1,14 +1,14 @@
 export const maps = [
 	{
-		slug: 'baltic-sea-the-northern-gulfs-political',
-		src: '/baltic_sea_the_northern_gulfs_political_light.jpg',
-		title: 'Baltic Sea | The Northern Gulfs',
+		slug: 'finland-political',
+		src: '/finland_political_light.jpg',
+		title: 'Finland | Political',
 		type: 'Political map',
 		year: '2025',
-		alt: 'Baltic Sea with the northern Gulfs.',
+		alt: 'Political map of Finland and neighbours.',
 		hdLink:
-			'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/baltic_sea_the_northern_gulfs_political.jpg',
-		description: ['Baltic Sea with the northern Gulfs.'],
+			'https://github.com/OskarWestmeijer/maps/blob/main/static/hd/finland_political.jpg',
+		description: ['Political map of Finland and neighbours.'],
 		steps: [],
 		additional: []
 	},
