@@ -34,7 +34,7 @@
 		"typescript": "^5.9.3",
 		"vite": "^7.2.4",
 		"vitest": "^3.2.4",
-		"vitest-browser-svelte": "^1.1.0"
+		"vitest-browser-svelte": "^2.0.1"
 	},
 	"dependencies": {
 		"daisyui": "^5.5.5"
