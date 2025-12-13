@@ -1,4 +1,4 @@
-import type { Node, Map } from '$lib/pathfinding/map';
+import type { Node, Map, TileType } from '$lib/pathfinding/map';
 
 /** Info stored per node during Dijkstra */
 interface NodeInfo {
@@ -8,10 +8,6 @@ interface NodeInfo {
 	prev: Node | null;
 }
 
-/**
- * Dijkstra algorithm working directly with Map.
- * Marks the path by setting Node.type = 'PATH' on the Map.
- */
 export interface DijkstraResult {
 	path: Node[];
 	visitedCount: number;
@@ -19,6 +15,10 @@ export interface DijkstraResult {
 	pathCost: number;
 }
 
+/**
+ * Dijkstra algorithm working directly with Map.
+ * Marks visited nodes with 'DIJKSTRA_VISITED' and final path with 'PATH'.
+ */
 export function dijkstra(map: Map): DijkstraResult {
 	const rows = map.rows;
 	const cols = map.cols;
@@ -47,6 +47,11 @@ export function dijkstra(map: Map): DijkstraResult {
 		current.visited = true;
 		visitedCount++;
 
+		// Only mark visited nodes that are not START or END
+		if (current.node.type !== 'START' && current.node.type !== 'END') {
+			current.node.type = 'DIJKSTRA_VISITED' as TileType;
+		}
+
 		if (current.node.type === 'END') break;
 
 		for (const neighbor of current.node.neighbors) {
@@ -64,10 +69,12 @@ export function dijkstra(map: Map): DijkstraResult {
 
 	// Reconstruct path
 	const path = reconstructPath(nodeInfos, startNode, endNode);
+
+	// Mark final path nodes
 	markPath(path);
 
 	const pathLength = path.length;
-	const pathCost = path.length > 0 ? path.length - 1 : 0; // cost = steps
+	const pathCost = path.length > 0 ? path.length - 1 : 0;
 
 	return {
 		path,
@@ -77,7 +84,6 @@ export function dijkstra(map: Map): DijkstraResult {
 	};
 }
 
-/** Initialize NodeInfo grid from Node grid */
 function initializeNodeInfos(nodes: Node[][], rows: number, cols: number): NodeInfo[][] {
 	return Array.from({ length: rows }, (_, r) =>
 		Array.from({ length: cols }, (_, c) => ({
@@ -89,37 +95,6 @@ function initializeNodeInfos(nodes: Node[][], rows: number, cols: number): NodeI
 	);
 }
 
-/** Execute the main Dijkstra loop */
-function runDijkstra(nodeInfos: NodeInfo[][], startNode: Node, endNode: Node) {
-	const queue: NodeInfo[] = [nodeInfos[startNode.coord.row][startNode.coord.col]];
-
-	while (queue.length > 0) {
-		// Node with smallest distance
-		queue.sort((a, b) => a.distance - b.distance);
-		const current = queue.shift()!;
-		const { row, col } = current.node.coord;
-
-		if (current.visited) continue;
-		current.visited = true;
-
-		if (current.node.type === 'END') break;
-
-		// Visit neighbors
-		for (const neighbor of current.node.neighbors) {
-			const neighborInfo = nodeInfos[neighbor.coord.row][neighbor.coord.col];
-			if (neighborInfo.visited) continue;
-
-			const altDistance = current.distance + 1; // edge weight
-			if (altDistance < neighborInfo.distance) {
-				neighborInfo.distance = altDistance;
-				neighborInfo.prev = current.node;
-				queue.push(neighborInfo);
-			}
-		}
-	}
-}
-
-/** Reconstruct the path from END back to START */
 function reconstructPath(nodeInfos: NodeInfo[][], startNode: Node, endNode: Node): Node[] {
 	const path: Node[] = [];
 	let curr: Node | null = endNode;
@@ -129,7 +104,6 @@ function reconstructPath(nodeInfos: NodeInfo[][], startNode: Node, endNode: Node
 		curr = nodeInfos[curr.coord.row][curr.coord.col].prev;
 	}
 
-	// Validate path
 	if (path.length === 0 || path[0].type !== 'START') {
 		console.warn('No valid path found');
 		return [];
@@ -138,7 +112,6 @@ function reconstructPath(nodeInfos: NodeInfo[][], startNode: Node, endNode: Node
 	return path;
 }
 
-/** Mark the path nodes on the map */
 function markPath(path: Node[]) {
 	for (const n of path) {
 		if (n.type !== 'START' && n.type !== 'END') {

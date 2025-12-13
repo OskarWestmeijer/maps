@@ -1,4 +1,4 @@
-export type TileType = 'START' | 'END' | 'BLOCK' | 'EMPTY' | 'PATH';
+export type TileType = 'START' | 'END' | 'BLOCK' | 'EMPTY' | 'PATH' | 'DIJKSTRA_VISITED';
 
 export interface Coord {
 	row: number;

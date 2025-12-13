@@ -92,3 +92,4 @@ main {
 .end   { background-color: #f44336; }
 .block { background-color: #212121; }
 .path  { background-color: #2196f3; }
+.dijkstra_visited  { background-color: #f3d421; }
