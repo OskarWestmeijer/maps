@@ -28,7 +28,7 @@
 		"prettier": "^3.7.4",
 		"prettier-plugin-svelte": "^3.4.0",
 		"prettier-plugin-tailwindcss": "^0.7.2",
-		"svelte": "^5.45.8",
+		"svelte": "^5.46.0",
 		"svelte-check": "^4.3.4",
 		"tailwindcss": "^4.1.18",
 		"typescript": "^5.9.3",
@@ -37,6 +37,6 @@
 		"vitest-browser-svelte": "^1.1.0"
 	},
 	"dependencies": {
-		"daisyui": "^5.5.11"
+		"daisyui": "^5.5.13"
 	}
 }
