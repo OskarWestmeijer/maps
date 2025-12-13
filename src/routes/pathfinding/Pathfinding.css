@@ -1,0 +1,85 @@
+/* BoardPage.css */
+
+main {
+	display: flex;
+	justify-content: center;
+	align-items: flex-start;
+	padding: 2rem;
+}
+
+.content {
+	max-width: 700px;
+}
+
+.info {
+	margin-bottom: 0.5rem;
+	font-size: 14px;
+	display: flex;
+	justify-content: space-between;
+}
+
+.controls {
+	display: flex;
+	align-items: center;
+	margin-bottom: 1rem;
+	gap: 1rem;
+}
+
+.hover-info {
+	font-size: 14px;
+}
+
+.reg-button {
+	padding: 0.5rem 1rem;
+	cursor: pointer;
+	border: none;
+	background-color: #4caf50;
+	color: white;
+	border-radius: 4px;
+}
+
+.reg-button:hover {
+	background-color: #45a049;
+}
+
+.dijkstra-button {
+	padding: 0.5rem 1rem;
+	cursor: pointer;
+	border: none;
+	background-color: #2196f3; /* blue for Dijkstra */
+	color: white;
+	border-radius: 4px;
+}
+
+.dijkstra-button:hover {
+	background-color: #1976d2; /* darker blue on hover */
+}
+
+
+.board {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.row {
+	display: flex;
+	gap: 1px;
+}
+
+.tile {
+	width: 10px;
+	height: 10px;
+	border-radius: 1px;
+}
+
+.tile:hover {
+	background-color: #999595;
+}
+
+/* Colors for each tile type */
+.empty { background-color: #e0e0e0; }
+.start { background-color: #4caf50; }
+.end   { background-color: #f44336; }
+.block { background-color: #212121; }
+.path  { background-color: #2196f3; }
