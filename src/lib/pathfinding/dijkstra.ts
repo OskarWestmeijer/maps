@@ -1,4 +1,4 @@
-import type { TileType, Node, Map } from '$lib/pathfinding/map';
+import type { Node, Map } from '$lib/pathfinding/map';
 
 /** Info stored per node during Dijkstra */
 interface NodeInfo {
@@ -12,9 +12,14 @@ interface NodeInfo {
  * Dijkstra algorithm working directly with Map.
  * Marks the path by setting Node.type = 'PATH' on the Map.
  */
-export function dijkstra(map: Map): Node[] {
-	console.log('Running Dijkstra on Map');
+export interface DijkstraResult {
+	path: Node[];
+	visitedCount: number;
+	pathLength: number;
+	pathCost: number;
+}
 
+export function dijkstra(map: Map): DijkstraResult {
 	const rows = map.rows;
 	const cols = map.cols;
 	const nodes = map.getNodes();
@@ -23,23 +28,53 @@ export function dijkstra(map: Map): Node[] {
 
 	if (!startNode || !endNode) {
 		console.warn('START or END node is missing');
-		return [];
+		return { path: [], visitedCount: 0, pathLength: 0, pathCost: 0 };
 	}
 
-	// Initialize NodeInfo grid
 	const nodeInfos = initializeNodeInfos(nodes, rows, cols);
 	nodeInfos[startNode.coord.row][startNode.coord.col].distance = 0;
 
-	// Run Dijkstra
-	runDijkstra(nodeInfos, startNode, endNode);
+	let visitedCount = 0;
+
+	const queue: NodeInfo[] = [nodeInfos[startNode.coord.row][startNode.coord.col]];
+
+	while (queue.length > 0) {
+		queue.sort((a, b) => a.distance - b.distance);
+		const current = queue.shift()!;
+		const { row, col } = current.node.coord;
+
+		if (current.visited) continue;
+		current.visited = true;
+		visitedCount++;
+
+		if (current.node.type === 'END') break;
+
+		for (const neighbor of current.node.neighbors) {
+			const neighborInfo = nodeInfos[neighbor.coord.row][neighbor.coord.col];
+			if (neighborInfo.visited) continue;
+
+			const altDistance = current.distance + 1;
+			if (altDistance < neighborInfo.distance) {
+				neighborInfo.distance = altDistance;
+				neighborInfo.prev = current.node;
+				queue.push(neighborInfo);
+			}
+		}
+	}
 
 	// Reconstruct path
 	const path = reconstructPath(nodeInfos, startNode, endNode);
-
-	// Mark path on the map
 	markPath(path);
 
-	return path;
+	const pathLength = path.length;
+	const pathCost = path.length > 0 ? path.length - 1 : 0; // cost = steps
+
+	return {
+		path,
+		visitedCount,
+		pathLength,
+		pathCost
+	};
 }
 
 /** Initialize NodeInfo grid from Node grid */

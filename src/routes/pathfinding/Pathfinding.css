@@ -55,6 +55,15 @@ main {
 	background-color: #1976d2; /* darker blue on hover */
 }
 
+.stats ul {
+	list-style: none;
+	padding: 0;
+	margin: 0.5rem 0;
+}
+
+.stats li {
+	margin: 0.25rem 0;
+}
 
 .board {
 	display: flex;

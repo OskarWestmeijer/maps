@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Node } from '$lib/pathfinding/map';
+	import type { DijkstraResult } from '$lib/pathfinding/dijkstra';
 	import { Map } from '$lib/pathfinding/map';
 	import { dijkstra } from '$lib/pathfinding/dijkstra';
 	import './Pathfinding.css';
@@ -11,16 +12,18 @@
 	let map: Map;
 	let nodes: Node[][] = [];
 	let hovered: Node | null = null;
+	let stats: DijkstraResult | null = null;
 
 	function initMap() {
 		map = new Map(rows, cols, block_percentage);
-		nodes = map.getNodes().map(row => [...row]); // shallow copy for Svelte reactivity
+		nodes = map.getNodes().map((row) => [...row]); // shallow copy for Svelte reactivity
 		hovered = null;
+		stats = null;
 	}
 
 	function runDijkstra() {
-		dijkstra(map); // marks PATH nodes on the Map
-		nodes = map.getNodes().map(row => [...row]); // trigger reactivity
+		stats = dijkstra(map); // marks PATH nodes on the Map
+		nodes = map.getNodes().map((row) => [...row]); // trigger reactivity
 	}
 
 	initMap();
@@ -50,12 +53,24 @@
 						{#each row as node}
 							<div
 								class="tile {node.type.toLowerCase()}"
+								role="button"
+								tabindex="0"
 								on:mouseenter={() => (hovered = node)}
 								on:mouseleave={() => (hovered = null)}
 							></div>
 						{/each}
 					</div>
 				{/each}
+			</div>
+		{/if}
+
+		{#if stats}
+			<div class="stats">
+				<ul>
+					<li>Path length: {stats.pathLength}</li>
+					<li>Path cost: {stats.pathCost}</li>
+					<li>Visited nodes: {stats.visitedCount}</li>
+				</ul>
 			</div>
 		{/if}
 	</div>
