@@ -1,107 +1,124 @@
 <script lang="ts">
-	import type { Node } from '$lib/pathfinding/map';
-	import type { DijkstraResult } from '$lib/pathfinding/dijkstra';
-	import { Map } from '$lib/pathfinding/map';
-	import { dijkstra, dijkstraAnimated } from '$lib/pathfinding/dijkstra';
-	import './Pathfinding.css';
+	import { generateGraph, type Graph } from '$lib/pathfinding/graph';
 
-	const rows = 50;
-	const cols = 50;
-	const block_percentage = 15;
-	const animation_speed_ms = 1;
+	let graph: Graph = generateGraph(10);
+	let nodeCount = 10; // user-controlled input
 
-	let map: Map;
-	let nodes: Node[][] = [];
-	let hovered: Node | null = null;
-	let stats: DijkstraResult | null = null;
-	let isAnimating = false;
-	let isLocked = false; // disables run buttons until regeneration
+	const width = 800;
+	const height = 600;
 
-	function initMap() {
-		map = new Map(rows, cols, block_percentage);
-		nodes = map.getNodes().map((row) => [...row]);
-		hovered = null;
-		stats = null;
-		isAnimating = false;
-		isLocked = false; // allow new runs
+	function regenerate() {
+		const count = Math.max(1, Math.min(26, nodeCount)); // enforce A–Z range
+		graph = generateGraph(count);
 	}
 
-	function runDijkstra() {
-		if (isLocked) return;
-		isLocked = true;
-		stats = dijkstra(map);
-		nodes = map.getNodes().map((row) => [...row]);
+	// Recompute positions when graph changes
+	$: nodePositions = getNodePositions(graph);
+
+	function getNodePositions(graph: Graph) {
+		const positions = new Map<string, { x: number; y: number }>();
+		graph.nodes.forEach((node) => {
+			positions.set(node.id, {
+				x: Math.random() * (width - 150) + 75,
+				y: Math.random() * (height - 150) + 75
+			});
+		});
+		return positions;
 	}
-
-	/** Animated Dijkstra visualization */
-	async function runDijkstraAnimated() {
-		if (!map || isLocked) return;
-		isAnimating = true;
-		isLocked = true;
-
-		stats = await dijkstraAnimated(map, animation_speed_ms, updateUI);
-
-		// Final update
-		nodes = map.getNodes().map((row) => [...row]);
-		isAnimating = false;
-	}
-
-	/** Update the UI after each node visit */
-	function updateUI() {
-		nodes = map.getNodes().map((row) => [...row]);
-	}
-
-	initMap();
 </script>
 
-<main>
-	<div class="content">
-		{#if map}
-			<div class="info">
-				<div>START: ({map.startNode.coord.row}, {map.startNode.coord.col})</div>
-				<div>END: ({map.endNode.coord.row}, {map.endNode.coord.col})</div>
-				<div>
-					HOVER: {hovered ? `(${hovered.coord.row}, ${hovered.coord.col}) - ${hovered.type}` : '-'}
-				</div>
-			</div>
-		{/if}
-
-		<div class="controls">
-			<button class="reg-button" on:click={initMap} disabled={isAnimating}>Regenerate Map</button>
-			<button class="dijkstra-button" on:click={runDijkstra} disabled={isLocked}
-				>Run Dijkstra</button
-			>
-			<button class="dijkstra-button" on:click={runDijkstraAnimated} disabled={isLocked}
-				>Run Dijkstra Animated</button
-			>
-		</div>
-
-		{#if nodes.length > 0}
-			<div class="board">
-				{#each nodes as row}
-					<div class="row">
-						{#each row as node}
-							<div
-								class="tile {node.type.toLowerCase()}"
-								role="button"
-								tabindex="0"
-								on:mouseenter={() => (hovered = node)}
-								on:mouseleave={() => (hovered = null)}
-							></div>
-						{/each}
-					</div>
-				{/each}
-			</div>
-		{/if}
-
-		{#if stats}
-			<div class="stats">
-				<ul>
-					<li>Path length: {stats.pathLength}</li>
-					<li>Path cost: {stats.pathCost}</li>
-					<li>Visited nodes: {stats.visitedCount}</li>
-				</ul>
-			</div>
-		{/if}
+<div class="flex h-full w-full flex-col items-center justify-center gap-6 p-6">
+	<!-- Controls -->
+	<div class="flex flex-row items-center gap-4">
+		<label class="label font-semibold">Node Count:</label>
+		<input
+			type="number"
+			min="1"
+			max="26"
+			bind:value={nodeCount}
+			class="input-bordered input w-24 text-center"
+		/>
+		<button class="btn btn-primary" on:click={regenerate}> Regenerate Graph </button>
 	</div>
-</main>
+
+	<!-- Graph Visualization -->
+	<div class="overflow-auto rounded-2xl bg-base-200 p-4 shadow-lg">
+		<svg
+			{width}
+			{height}
+			viewBox={`0 0 ${width} ${height}`}
+			class="mx-auto block rounded-lg bg-base-100"
+		>
+			<!-- Edges -->
+			{#each graph.nodes as node}
+				{#each node.neighbors as neighbor}
+					{#if node.id < neighbor.node.id}
+						<line
+							x1={nodePositions.get(node.id).x}
+							y1={nodePositions.get(node.id).y}
+							x2={nodePositions.get(neighbor.node.id).x}
+							y2={nodePositions.get(neighbor.node.id).y}
+							stroke="#888"
+							stroke-width="2"
+						/>
+						<text
+							x={(nodePositions.get(node.id).x + nodePositions.get(neighbor.node.id).x) / 2}
+							y={(nodePositions.get(node.id).y + nodePositions.get(neighbor.node.id).y) / 2}
+							fill="#000"
+							font-size="12"
+							text-anchor="middle"
+							alignment-baseline="middle"
+						>
+							{neighbor.edgeWeight}
+						</text>
+					{/if}
+				{/each}
+			{/each}
+
+			<!-- Nodes -->
+			{#each graph.nodes as node}
+				<!-- Circle -->
+				<circle
+					cx={nodePositions.get(node.id).x}
+					cy={nodePositions.get(node.id).y}
+					r="25"
+					fill={node.id === graph.start.id ? 'orange' : '#3b82f6'}
+					stroke="#333"
+					stroke-width="2"
+				/>
+
+				<!-- Distance inside circle -->
+				<text
+					x={nodePositions.get(node.id).x}
+					y={nodePositions.get(node.id).y}
+					fill="#fff"
+					font-size="14"
+					text-anchor="middle"
+					alignment-baseline="middle"
+					font-weight="bold"
+				>
+					{node.distance === Infinity ? '∞' : node.distance}
+				</text>
+
+				<!-- Node ID next to circle -->
+				<text
+					x={nodePositions.get(node.id).x + 30}
+					y={nodePositions.get(node.id).y + 5}
+					fill="#000"
+					font-size="14"
+					font-weight="bold"
+					text-anchor="start"
+					alignment-baseline="middle"
+				>
+					{node.id}
+				</text>
+			{/each}
+		</svg>
+	</div>
+</div>
+
+<style>
+	svg {
+		background-color: #f9f9f9;
+	}
+</style>
