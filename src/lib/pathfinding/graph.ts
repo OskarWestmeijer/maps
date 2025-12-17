@@ -61,39 +61,50 @@ export function buildGraph(height: number, width: number) {
 		position: { x: width * secondColumn, y: height * 0.2 }
 	};
 
+	// third column
 	let eNode: Node = {
 		id: 'E',
 		neighbors: [],
 		visited: false,
 		distance: Infinity,
-		position: { x: width * secondColumn, y: height * 0.6 }
+		position: { x: width * thirdColumn, y: height * 0.8 }
 	};
 
-	// third column
+	// fourth column
 	let fNode: Node = {
 		id: 'F',
 		neighbors: [],
 		visited: false,
 		distance: Infinity,
-		position: { x: width * thirdColumn, y: height * 0.6 }
+		position: { x: width * fourthColumn, y: height * 0.6 }
+	};
+
+	let gNode: Node = {
+		id: 'G',
+		neighbors: [],
+		visited: false,
+		distance: Infinity,
+		position: { x: width * fourthColumn, y: height * 0.2 }
 	};
 
 	// neighbors
-	createNeighbor(aNode, bNode, 2);
+	createNeighbor(aNode, bNode, 1);
 	createNeighbor(aNode, dNode, 1);
 
-	createNeighbor(bNode, cNode, 3);
+	createNeighbor(bNode, cNode, 1);
 
 	createNeighbor(cNode, dNode, 3);
 	createNeighbor(cNode, eNode, 2);
 
 	createNeighbor(dNode, fNode, 3);
 	createNeighbor(dNode, eNode, 2);
+	createNeighbor(dNode, gNode, 6);
 
 	createNeighbor(fNode, eNode, 1);
+	createNeighbor(fNode, gNode, 1);
 
 	// register nodes
-	const nodes = Array(aNode, bNode, cNode, dNode, eNode, fNode);
+	const nodes = Array(aNode, bNode, cNode, dNode, eNode, fNode, gNode);
 
 	// build graph
 	return { nodes: nodes, start: aNode };

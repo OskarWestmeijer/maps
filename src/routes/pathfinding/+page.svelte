@@ -1,19 +1,46 @@
 <script lang="ts">
-	import { buildGraph, type Graph, type Node } from '$lib/pathfinding/graph';
-	import { runDijkstra } from '$lib/pathfinding/dijkstra';
+	import { buildGraph, type Graph } from '$lib/pathfinding/graph';
+	import { runDijkstra, reconstructPath } from '$lib/pathfinding/dijkstra';
 
 	const width = 800;
 	const height = 600;
+
 	let graph: Graph = buildGraph(height, width);
+	let previous: Map<string, any> | null = null;
+	let hoveredPath: string[] = [];
 
 	function regenerate() {
 		graph = buildGraph(height, width);
+		previous = null;
+		hoveredPath = [];
 	}
 
 	function runAlgorithm() {
-		runDijkstra(graph);
-		// Trigger Svelte reactivity by reassigning reference
-		graph = { ...graph, nodes: [...graph.nodes] };
+		const result = runDijkstra(graph);
+		previous = result.previous;
+		graph = { ...graph, nodes: [...graph.nodes] }; // trigger reactivity
+	}
+
+	function handleMouseEnter(nodeId: string) {
+		if (!previous) return;
+		hoveredPath = reconstructPath(nodeId, previous);
+	}
+
+	function handleMouseLeave() {
+		hoveredPath = [];
+	}
+
+	function isEdgeInPath(nodeA: string, nodeB: string): boolean {
+		if (!hoveredPath.length) return false;
+		for (let i = 0; i < hoveredPath.length - 1; i++) {
+			if (
+				(hoveredPath[i] === nodeA && hoveredPath[i + 1] === nodeB) ||
+				(hoveredPath[i] === nodeB && hoveredPath[i + 1] === nodeA)
+			) {
+				return true;
+			}
+		}
+		return false;
 	}
 </script>
 
@@ -41,8 +68,8 @@
 							y1={node.position.y}
 							x2={neighbor.node.position.x}
 							y2={neighbor.node.position.y}
-							stroke="#888"
-							stroke-width="2"
+							stroke={isEdgeInPath(node.id, neighbor.node.id) ? '#facc15' : '#888'}
+							stroke-width={isEdgeInPath(node.id, neighbor.node.id) ? '5' : '2'}
 						/>
 						<text
 							x={(node.position.x + neighbor.node.position.x) / 2 + 10}
@@ -64,9 +91,18 @@
 					cx={node.position.x}
 					cy={node.position.y}
 					r="25"
-					fill={node.id === graph.start.id ? 'orange' : node.visited ? '#16a34a' : '#3b82f6'}
-					stroke="#333"
+					fill={node.id === graph.start.id
+						? 'orange'
+						: hoveredPath.includes(node.id)
+							? '#facc15'
+							: node.visited
+								? '#16a34a'
+								: '#3b82f6'}
+					stroke={hoveredPath.includes(node.id) ? '#fbbf24' : '#333'}
 					stroke-width="2"
+					on:mouseenter={() => handleMouseEnter(node.id)}
+					on:mouseleave={handleMouseLeave}
+					style="cursor: pointer;"
 				/>
 
 				<!-- Distance inside circle -->
@@ -102,5 +138,15 @@
 <style>
 	svg {
 		background-color: #f9f9f9;
+	}
+	line {
+		transition:
+			stroke 0.2s ease,
+			stroke-width 0.2s ease;
+	}
+	circle {
+		transition:
+			fill 0.2s ease,
+			stroke 0.2s ease;
 	}
 </style>
