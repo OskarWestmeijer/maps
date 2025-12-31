@@ -22,8 +22,11 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
 	implementation 'org.jetbrains.kotlin:kotlin-reflect'
+	implementation('org.postgresql:postgresql:42.7.7')
+	implementation 'org.hibernate.orm:hibernate-spatial:7.2.0.Final'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
