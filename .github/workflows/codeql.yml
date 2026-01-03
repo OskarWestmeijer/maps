@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['javascript']
+        language: ['java', 'javascript']
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby', 'swift' ]
         # Use only 'java' to analyze code written in Java, Kotlin or both
         # Use only 'javascript' to analyze code written in JavaScript, TypeScript or both
@@ -32,6 +32,18 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+
+      - uses: actions/setup-java@v5
+        if: ${{ matrix.language == 'java' }}
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: build java project
+        if: ${{ matrix.language == 'java' }}
+        run: |
+          chmod +x gradlew 
+          ./gradlew clean package
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
