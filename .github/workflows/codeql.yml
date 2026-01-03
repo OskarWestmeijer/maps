@@ -41,7 +41,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
-          cache: maven
+          cache: gradle
       - name: build java project
         if: ${{ matrix.language == 'java' }}
         run: |
