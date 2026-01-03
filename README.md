@@ -10,6 +10,8 @@ I create thematic maps with the tool QGIS. Most of the data used for creating th
 ## Technologies
 
 ```
+- Kotlin & Spring Boot
+- Posgtres & Postgis extension
 - Sveltekit & Vite
 - Tailwind & DaisyUi
 - Nginx
@@ -21,43 +23,8 @@ Check out the website for more maps.
 
 ![Alt Netherlands elevation map](static/nl12_light.jpg)
 
-## Build & test
+## Prepared request
 
-```bash
-npm install
-npm run build
-```
-
-## Local development
-
-```bash
-npm install
-npm run dev
-```
-
-### Local test deployment
-
-```bash
-docker images rm maps:local
-
-npm run build
-docker build -t maps:local .
-docker compose up
-```
-
-## Update dependencies
-
-Use ncu to update the dependencies. `npm install -g npm-check-updates`
-
-```bash
-# list possible updates
-ncu
-
-# granular updates
-ncu -u --target=patch
-ncu -u --target=minor
-
-# run major updates
-ncu -u
-npm install
+``` bash
+curl -X GET http://localhost:8080/stations
 ```

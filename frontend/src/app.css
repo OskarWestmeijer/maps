@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: "customtheme";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-primary: #233554;
+  --color-secondary: #233554;
+  --color-accent: #ffd200;
+  --color-accent-focus: #ffffff;
+  --color-neutral: #191a3e;
+  --color-base-100: #ffffff;
+  --color-info: #cae2e8;
+  --color-success: #dff2a1;
+  --color-warning: #f7e488;
+  --color-error: #f2b6b5;
+}
+
+body {
+    @apply flex flex-col h-screen m-0 bg-base-100; /* Ensure full height and background color */
+  }
+  
+  #app {
+    @apply flex-grow;
+  }
+  
+  footer {
+    padding-bottom: 30px;
+    @apply mt-0 bg-base-100;
+  }
+  
+  /* Show social links only on wider screens */
+@media (max-width: 700px) {
+  .mobile-hide {
+    display: none;
+  }
+}
