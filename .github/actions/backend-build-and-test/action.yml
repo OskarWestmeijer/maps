@@ -1,0 +1,21 @@
+name: backend-build-and-test
+description: 'backend-build-and-test'
+inputs:
+  java:
+    description: Java version
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ inputs.java }}
+        cache: gradle
+
+    - name: Test backend
+      shell: bash
+      run: |
+        chmod +x gradlew 
+        ./gradlew clean check

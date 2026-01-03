@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Maps Database",
+      "Group": "Servers",
+      "Host": "maps-postgres",
+      "Port": 5432,
+      "MaintenanceDB": "maps",
+      "Username": "username1",
+      "Password": "password1",
+      "SSLMode": "prefer"
+    }
+  }
+}

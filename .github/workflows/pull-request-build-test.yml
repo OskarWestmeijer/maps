@@ -4,27 +4,29 @@ on:
   pull_request:
 
 env:
+  JAVA_VERSION: 25.0.1
   NODE_VERSION: 24.12.0
 
 jobs:
+  backend-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-build-and-test
+        with:
+          java: ${{ env.JAVA_VERSION }}
+
   frontend-build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/frontend-build-and-test
         with:
-          frontend-directory: .
+          frontend-directory: frontend
           node: ${{ env.NODE_VERSION }}
 
-  codeql-check:
-    uses: ./.github/workflows/codeql.yml
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
   dependabot-automerge:
-    needs: [frontend-build-and-test]
+    needs: [ backend-build-and-test, frontend-build-and-test ]
     runs-on: ubuntu-latest
     environment: oskar-westmeijer-environment
     if: ${{ github.actor == 'dependabot[bot]' }}

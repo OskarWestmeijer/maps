@@ -1,17 +1,24 @@
 services:
-  maps:
-    image: maps:local
-    container_name: maps-local
-    deploy:
-      resources:
-        limits:
-          memory: 100m
-        reservations:
-          memory: 100m
+  database:
+    container_name: maps-postgres
+    image: postgis/postgis:18-3.6
     ports:
-      - "80:80"
-    restart: always
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: username1
+      POSTGRES_PASSWORD: password1
+      POSTGRES_DB: maps
     volumes:
-      - ./nginx/conf.d/:/etc/nginx/conf.d/:ro
-    labels:
-      log_category: "nginx"
+      - ./local/db/init:/docker-entrypoint-initdb.d
+
+  pgadmin:
+    container_name: maps-pgadmin
+    image: dpage/pgadmin4:9.11.0
+    ports:
+      - "9999:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: username1@test.com
+      PGADMIN_DEFAULT_PASSWORD: password1
+    volumes:
+      - ./local/pgadmin/servers.json:/pgadmin4/servers.json:ro
+
