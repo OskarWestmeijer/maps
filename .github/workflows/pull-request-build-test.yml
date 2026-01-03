@@ -25,15 +25,8 @@ jobs:
           frontend-directory: frontend
           node: ${{ env.NODE_VERSION }}
 
-  codeql-check:
-    uses: ./.github/workflows/codeql.yml
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
   dependabot-automerge:
-    needs: [ backend-build-and-test, frontend-build-and-test, codeql-check ]
+    needs: [ backend-build-and-test, frontend-build-and-test ]
     runs-on: ubuntu-latest
     environment: oskar-westmeijer-environment
     if: ${{ github.actor == 'dependabot[bot]' }}

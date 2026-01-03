@@ -9,10 +9,8 @@ group = 'westmeijer.oskar'
 version = '0.0.1-SNAPSHOT'
 description = 'Maps routing'
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(24)
-	}
+kotlin {
+	jvmToolchain(24)
 }
 
 repositories {
