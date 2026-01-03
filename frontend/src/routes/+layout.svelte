@@ -25,6 +25,7 @@
 		<div class="navbar-center">
 			<a href="/" class="btn text-lg btn-ghost">🗺️ Gallery</a>
 			<a href="/pathfinding" class="btn text-lg btn-ghost">🚩 Pathfinding</a>
+			<a href="/routing" class="btn text-lg btn-ghost">🚩 Routing</a>
 			<a href="/about" class="btn text-lg btn-ghost">💡 About</a>
 		</div>
 		<div class="navbar-end">

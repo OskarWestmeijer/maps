@@ -13,6 +13,9 @@ data class SubwayStation(
 
     val name: String? = null,
 
+    /**
+     * Stored in Spatial Reference Identifier "26918". It uses meters as units (not latitude/longitude).
+     */
     @Column(columnDefinition = "geometry(Point, 26918)")
     val geom: Point? = null
 

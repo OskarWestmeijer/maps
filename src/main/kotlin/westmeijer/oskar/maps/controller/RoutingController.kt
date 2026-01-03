@@ -3,17 +3,24 @@ package westmeijer.oskar.maps.controller
 import org.locationtech.jts.geom.util.GeometryTransformer
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.CrossOrigin
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 import westmeijer.oskar.maps.repository.SubwayStationRepository
 
+@CrossOrigin
 @RestController
 class RoutingController(
     private val repository: SubwayStationRepository
 ) {
 
     private val log = LoggerFactory.getLogger(RoutingController::class.java)
+
+    /**
+     * EPSG 4326 (i.e. WGS 84)
+     */
+    private val targetProjection = 4326
 
 
     @PostMapping("/routing")
@@ -24,7 +31,7 @@ class RoutingController(
 
     @GetMapping("/stations")
     fun getAllStations(): List<SubwayStationDTO> {
-        return repository.findAll().map { station ->
+        return repository.findAll(targetProjection).map { station ->
             SubwayStationDTO(
                 gid = station.gid,
                 name = station.name,
