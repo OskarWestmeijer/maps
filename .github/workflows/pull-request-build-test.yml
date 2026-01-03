@@ -33,7 +33,7 @@ jobs:
       security-events: write
 
   dependabot-automerge:
-    needs: [ frontend-build-and-test ]
+    needs: [ backend-build-and-test, frontend-build-and-test, codeql-check ]
     runs-on: ubuntu-latest
     environment: oskar-westmeijer-environment
     if: ${{ github.actor == 'dependabot[bot]' }}
