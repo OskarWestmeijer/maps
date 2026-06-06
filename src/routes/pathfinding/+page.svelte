@@ -88,6 +88,9 @@
 			<!-- Nodes -->
 			{#each graph.nodes as node}
 				<circle
+					role="button"
+					tabindex="0"
+					aria-label={`Node ${node.id}`}
 					cx={node.position.x}
 					cy={node.position.y}
 					r="25"
