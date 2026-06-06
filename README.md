@@ -10,7 +10,8 @@ I create thematic maps with the tool QGIS. Most of the data used for creating th
 ## Technologies
 
 ```
-- Sveltekit & Vite
+- Sveltekit (SSG) & Vite
+- Vitest & Playwright
 - Tailwind & DaisyUi
 - Nginx
 ```
@@ -23,9 +24,33 @@ Check out the website for more maps.
 
 ## Build & test
 
+### Vitest Unit test
 ```bash
 npm install
 npm run build
+```
+
+### Playwright e2e test
+
+I develop on Linux Fedora, which does not natively support playwright. Use distrobox. 
+
+
+#### Prerequisites
+```bash
+sudo dnf install distrobox
+mkdir ~/distrobox
+distrobox create \
+--name ubuntu --image ubuntu:24.04 \
+--home ~/distrobox/ubuntu \
+--additional-packages "git vim nodejs npm"
+```
+
+#### Test execution
+```bash
+distrobox enter ubuntu
+npx playwright install --with-deps
+npm run test:e2e
+distrobox stop ubuntu
 ```
 
 ## Local development
@@ -33,16 +58,6 @@ npm run build
 ```bash
 npm install
 npm run dev
-```
-
-### Local test deployment
-
-```bash
-docker images rm maps:local
-
-npm run build
-docker build -t maps:local .
-docker compose up
 ```
 
 ## Update dependencies
