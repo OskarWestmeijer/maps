@@ -1,0 +1,54 @@
+name: frontend-e2e
+description: 'frontend-e2e'
+inputs:
+  frontend-directory:
+    description: Frontend directory from project root
+    required: true
+  node:
+    description: Node version
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: setup node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node }}
+        cache: 'npm'
+        cache-dependency-path: ${{ inputs.frontend-directory }}/package-lock.json
+
+    - name: npm ci
+      shell: bash
+      working-directory: ${{ inputs.frontend-directory }}
+      run: npm ci
+
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-chromium-${{ hashFiles(format('{0}/package-lock.json', inputs.frontend-directory)) }}
+
+    - name: Install Playwright Chromium
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      working-directory: ${{ inputs.frontend-directory }}
+      run: npx playwright install chromium --with-deps
+      shell: bash
+
+    - name: Install Playwright OS dependencies
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      working-directory: ${{ inputs.frontend-directory }}
+      run: npx playwright install-deps chromium
+      shell: bash
+
+    - name: Run Playwright tests
+      working-directory: ${{ inputs.frontend-directory }}
+      run: npm run test:e2e
+      shell: bash
+
+    - uses: actions/upload-artifact@v4
+      if: ${{ !cancelled() }}
+      with:
+        name: playwright-report
+        path: ${{ inputs.frontend-directory }}/playwright-report/
+        retention-days: 30

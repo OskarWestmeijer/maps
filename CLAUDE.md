@@ -26,7 +26,7 @@ npm run test                     # test:unit --run && test:e2e (full suite, as r
 ```
 
 Run a single vitest test by name or file, e.g. `npx vitest run src/demo.spec.ts` or `npx vitest -t "adds 1 + 2"`.
-Run a single playwright test, e.g. `npx playwright test playwright/demo.test.ts`.
+Run a single playwright test, e.g. `npx playwright test playwright/home.spec.ts`.
 
 Playwright does not run natively on Fedora (the maintainer's OS). On Fedora, run e2e tests inside distrobox:
 ```bash
