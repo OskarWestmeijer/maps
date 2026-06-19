@@ -10,7 +10,7 @@ jobs:
   frontend-build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/frontend-build-and-test
         with:
           frontend-directory: .
@@ -19,7 +19,7 @@ jobs:
   frontend-e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/frontend-e2e
         with:
           frontend-directory: .
@@ -38,7 +38,7 @@ jobs:
     environment: oskar-westmeijer-environment
     if: ${{ github.actor == 'dependabot[bot]' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: echo "event name is:" ${{ github.event_name }}
       - run: echo "event type is:" ${{ github.event.action }}
       - name: Dependabot metadata
