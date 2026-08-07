@@ -2,18 +2,13 @@ name: Deploy
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ['main-build-test-release']
-    types: [completed]
-    branches: [main]
+  workflow_call:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: oskar-westmeijer-environment
-    if: |
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
