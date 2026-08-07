@@ -2,7 +2,18 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy, e.g. sha-<full-commit-sha> to roll back. Defaults to latest.'
+        required: false
+        default: 'latest'
+        type: string
   workflow_call:
+    inputs:
+      image_tag:
+        required: false
+        default: 'latest'
+        type: string
 
 jobs:
   deploy:
@@ -19,5 +30,5 @@ jobs:
           script: |
             cd /deployments/maps
             git pull
-            ./deploy.sh
+            ./deploy.sh ${{ inputs.image_tag }}
             docker ps

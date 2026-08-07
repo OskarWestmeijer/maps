@@ -1,6 +1,6 @@
 services:
   maps:
-    image: oskarwestmeijer/maps:latest
+    image: oskarwestmeijer/maps:${MAPS_IMAGE_TAG:-latest}
     container_name: maps
     deploy:
       resources:
