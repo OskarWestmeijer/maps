@@ -12,8 +12,13 @@ execute_command() {
     fi
 }
 
-# Image tag to deploy (defaults to latest; pass a specific tag, e.g. sha-<commit-sha>, to roll back)
-export MAPS_IMAGE_TAG="${1:-latest}"
+# Image tag to deploy (defaults to latest; pass a specific tag, e.g. sha-<commit-sha>, to roll back).
+# A bare 40-char commit SHA is normalized to the sha-<commit-sha> tag docker/metadata-action pushes.
+image_tag="${1:-latest}"
+if [[ "$image_tag" =~ ^[0-9a-f]{40}$ ]]; then
+    image_tag="sha-${image_tag}"
+fi
+export MAPS_IMAGE_TAG="$image_tag"
 
 # Start deploy maps script
 echo "Start deploy maps script (image tag: $MAPS_IMAGE_TAG)."
@@ -32,8 +37,10 @@ execute_command "$compose_up"
 echo 'Cleaning up unused images.'
 execute_command "docker image prune -f"
 
-running_image_id=$(docker compose -f cprod.yml images -q maps)
-old_maps_image_ids=$(docker images oskarwestmeijer/maps --format '{{.ID}}' | sort -u | grep -v "^${running_image_id}$")
+# Compare full-length IDs from docker inspect/--no-trunc; short IDs from different
+# docker/compose commands aren't guaranteed to be formatted consistently.
+running_image_id=$(docker inspect --format '{{.Image}}' maps)
+old_maps_image_ids=$(docker images oskarwestmeijer/maps --no-trunc --format '{{.ID}}' | sort -u | grep -vF "$running_image_id")
 if [ -n "$old_maps_image_ids" ]; then
     execute_command "docker image rm -f $(echo "$old_maps_image_ids" | tr '\n' ' ')"
 else
