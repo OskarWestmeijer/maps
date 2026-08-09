@@ -7,3 +7,7 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Source data for the interactive map (QGIS / PxWeb exports, not hand-edited)
+*.geojson
+/src/lib/interactive/unemployment_*.json

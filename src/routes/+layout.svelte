@@ -18,14 +18,17 @@
 			<div class="mobile-hide">
 				<a
 					href="https://maps.oskar-westmeijer.com"
-					class="btn rounded-lg text-lg font-bold btn-ghost">&#129517; Maps</a
+					class="btn rounded-lg btn-ghost text-lg font-bold text-white hover:text-black"
+					>&#129517; Maps</a
 				>
 			</div>
 		</div>
 		<div class="navbar-center">
-			<a href="/" class="btn text-lg btn-ghost">🗺️ Gallery</a>
-			<a href="/pathfinding" class="btn text-lg btn-ghost">🚩 Pathfinding</a>
-			<a href="/about" class="btn text-lg btn-ghost">💡 About</a>
+			<a href="/" class="btn btn-ghost text-lg text-white hover:text-black">🗺️ Gallery</a>
+			<a href="/interactive" class="btn btn-ghost text-lg text-white hover:text-black"
+				>🧭 Interactive</a
+			>
+			<a href="/about" class="btn btn-ghost text-lg text-white hover:text-black">💡 About</a>
 		</div>
 		<div class="navbar-end">
 			<div class="mobile-hide">
@@ -47,9 +50,9 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="footer-center footer py-6">
+	<footer class="footer footer-center py-6">
 		<a href="https://oskar-westmeijer.com" class="text-base">
-			Created by Oskar Westmeijer 🐨 2025
+			Created by Oskar Westmeijer 🐨 2026
 		</a>
 	</footer>
 </div>
