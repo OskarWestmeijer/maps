@@ -39,6 +39,37 @@ export type UnemploymentData = {
 	source: string;
 };
 
+/**
+ * Rolls up an arbitrary set of municipalities into one figure — used for a hand-picked
+ * region (e.g. Tampere metro), which has no equivalent pre-aggregated row in the source
+ * export the way the whole country does (`SSS`).
+ *
+ * Each field is summed independently rather than the whole result going null the moment any
+ * one municipality has a suppressed figure: a municipality's `labourForce` can be known even
+ * when its `rate` is suppressed (same as the per-kunta data already handles), so a field is
+ * only null here when *every* municipality's value for it is null.
+ *
+ * `rate` is recomputed from the summed `unemployed`/`labourForce`, never averaged from the
+ * per-kunta rates — municipalities vary hugely in size, so an average would misweight them.
+ */
+export function aggregateKuntaStats(list: KuntaStats[]): KuntaStats {
+	const sum = (field: 'labourForce' | 'jobseekers' | 'unemployed'): number | null => {
+		const known = list.map((k) => k[field]).filter((v): v is number => v !== null);
+
+		return known.length ? known.reduce((a, b) => a + b, 0) : null;
+	};
+
+	const labourForce = sum('labourForce');
+	const jobseekers = sum('jobseekers');
+	const unemployed = sum('unemployed');
+	const rate =
+		labourForce !== null && labourForce > 0 && unemployed !== null
+			? (unemployed / labourForce) * 100
+			: null;
+
+	return { rate, labourForce, jobseekers, unemployed };
+}
+
 const WHOLE_COUNTRY = 'SSS';
 
 const COLUMNS = {
@@ -121,32 +152,63 @@ export function toUnemploymentData(px: PxWebExport): UnemploymentData {
 }
 
 /**
- * Green (low) to red (high), in six classes.
+ * A *diverging* scale, not a sequential one: colour encodes how far a municipality sits
+ * from the whole-country rate, in percentage points, with a neutral grey at the national
+ * figure. Green reads below-average, red above-average.
  *
- * The ramp's lightness decreases monotonically across every step, which matters: a plain
- * green-to-red scale is unreadable for red-green colour blindness, but because low always
- * reads lighter than high the magnitude still comes through when the hue does not. Steps
- * were validated for monotone lightness, adjacent lightness gaps and light-end contrast
- * against the white page.
+ * This replaced a green→red sequential ramp whose middle classes were muddy olive/brown —
+ * the unavoidable cost of dragging one hue across to another while keeping lightness
+ * monotone. Anchoring on the national rate removes that middle entirely (the midpoint is
+ * genuinely neutral) and makes the colour answer a sharper question: better or worse than
+ * Finland?
+ *
+ * Each coloured arm is its own single-hue ramp, light (near the midpoint) to dark (at the
+ * extreme), so magnitude survives when hue collapses under red-green colour blindness. Both
+ * arms pass the `dataviz` skill's `validate_palette.js --ordinal` on all four checks
+ * (monotone lightness, adjacent gaps, light-end contrast against the map sheet, single
+ * hue). If you re-pick these, re-run that — don't eyeball it.
+ *
+ * Bands are chosen against the real distribution (304 municipalities with a rate, national
+ * 12.8 %): roughly 78 / 84 / 45 / 46 / 22 / 20 / 9 across the seven classes.
  */
-export const UNEMPLOYMENT_CLASSES = [
-	{ min: 0, label: 'under 6', color: '#81c593' },
-	{ min: 6, label: '6–9', color: '#76af7c' },
-	{ min: 9, label: '9–12', color: '#81936c' },
-	{ min: 12, label: '12–15', color: '#a36945' },
-	{ min: 15, label: '15–18', color: '#ac3d25' },
-	{ min: 18, label: '18 and over', color: '#9c1b1b' }
+export const DEVIATION_CLASSES = [
+	{ min: -Infinity, label: 'far below', color: '#1d6835' },
+	{ min: -4, label: 'below', color: '#5a8f65' },
+	{ min: -2, label: 'a little below', color: '#90b697' },
+	{ min: -0.75, label: 'about average', color: '#c5cbd2' },
+	{ min: 0.75, label: 'a little above', color: '#de958e' },
+	{ min: 2, label: 'above', color: '#bd615b' },
+	{ min: 4, label: 'far above', color: '#9a2929' }
 ] as const;
 
-export const NO_DATA_COLOR = '#e5e5e2';
+/** Index of the neutral, "about the national rate" class. */
+const NEUTRAL_CLASS = 3;
 
-export function colorFor(rate: number | null): string {
+/**
+ * Municipalities with no published rate are hatched rather than given another grey — a
+ * fourth flat grey next to the neutral midpoint would read as a data class. `NO_DATA_COLOR`
+ * is the hatch's backing fill; the stripes are drawn by the `no-data` SVG pattern.
+ */
+export const NO_DATA_COLOR = '#f0f1ef';
+
+/** The sheet the map sits on. The light ends of both arms are contrast-checked against it. */
+export const MAP_SURFACE = '#f5f7f9';
+
+/**
+ * @param rate The municipality's rate.
+ * @param reference The whole-country rate the scale diverges around. Kept at the *national*
+ *   figure even on the regional view, so a municipality never changes colour when the region
+ *   toggle flips and the two views stay directly comparable.
+ */
+export function colorFor(rate: number | null, reference: number | null): string {
 	if (rate === null) return NO_DATA_COLOR;
+	if (reference === null) return DEVIATION_CLASSES[NEUTRAL_CLASS].color;
 
-	let color = UNEMPLOYMENT_CLASSES[0].color as string;
+	const deviation = rate - reference;
+	let color: string = DEVIATION_CLASSES[0].color;
 
-	for (const bucket of UNEMPLOYMENT_CLASSES) {
-		if (rate >= bucket.min) color = bucket.color;
+	for (const bucket of DEVIATION_CLASSES) {
+		if (deviation >= bucket.min) color = bucket.color;
 	}
 
 	return color;

@@ -1,41 +1,119 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
-@plugin "daisyui";
+@plugin 'daisyui';
 
-@plugin "daisyui/theme" {
-  name: "customtheme";
-  default: true;
-  prefersdark: false;
-  color-scheme: light;
+/*
+  Archivo, self-hosted rather than pulled from Google Fonts: the site ships as a static
+  bundle behind Nginx, so an external font request would be the page's only third-party
+  dependency. Both axes are kept — weight *and width* — because hierarchy on this page is
+  set by width as much as size (see `.stat-label` and `.display-wide` below).
+*/
+@font-face {
+	font-family: 'Archivo';
+	font-style: normal;
+	font-weight: 100 900;
+	font-stretch: 62.5% 125%;
+	font-display: swap;
+	src: url('/fonts/archivo-latin.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
-  --color-primary: #233554;
-  --color-secondary: #233554;
-  --color-accent: #ffd200;
-  --color-accent-focus: #ffffff;
-  --color-neutral: #191a3e;
-  --color-base-100: #ffffff;
-  --color-info: #cae2e8;
-  --color-success: #dff2a1;
-  --color-warning: #f7e488;
-  --color-error: #f2b6b5;
+@font-face {
+	font-family: 'Archivo';
+	font-style: normal;
+	font-weight: 100 900;
+	font-stretch: 62.5% 125%;
+	font-display: swap;
+	src: url('/fonts/archivo-latin-ext.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+
+@plugin 'daisyui/theme' {
+	name: 'customtheme';
+	default: true;
+	prefersdark: false;
+	color-scheme: light;
+
+	--color-primary: #1b2a44;
+	--color-secondary: #1b2a44;
+	/* The accent is the same blue the map uses for a selected municipality, so the selection
+     reads as part of the system rather than a one-off highlight. */
+	--color-accent: #2563eb;
+	--color-accent-focus: #ffffff;
+	--color-neutral: #1b2a44;
+	--color-base-100: #ffffff;
+	--color-base-200: #f5f7f9;
+	--color-base-300: #e4e9ee;
+	--color-info: #dbeafe;
+	--color-success: #dcefe1;
+	--color-warning: #fdf0cf;
+	--color-error: #f7ddda;
+}
+
+@theme {
+	--font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+	/* Ink scale — one navy hue desaturating into grey, so text never looks like four
+     unrelated colours stacked on top of each other. */
+	--ink: #101a2b;
+	--ink-muted: #5b6879;
+	--ink-faint: #8a94a3;
+}
+
+html {
+	font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 body {
-    @apply flex flex-col h-screen m-0 bg-base-100; /* Ensure full height and background color */
-  }
-  
-  #app {
-    @apply flex-grow;
-  }
-  
-  footer {
-    padding-bottom: 30px;
-    @apply mt-0 bg-base-100;
-  }
-  
-  /* Show social links only on wider screens */
+	@apply m-0 flex h-screen flex-col bg-base-100;
+	color: var(--ink);
+	/* Every figure on this page sits in a column that has to line up: rates above each other
+     in the panel, counts against their labels. Tabular by default, everywhere. */
+	font-variant-numeric: tabular-nums;
+}
+
+#app {
+	@apply flex-grow;
+}
+
+footer {
+	padding-bottom: 30px;
+	@apply mt-0 bg-base-100;
+}
+
+/*
+  The page's one repeated typographic device: a narrow, letterspaced, uppercase micro-label
+  that names a figure. It leans on Archivo's width axis (88%) rather than just going small
+  and grey, which is what keeps the stat blocks reading as a statistical table instead of a
+  stack of form rows.
+*/
+.stat-label {
+	font-stretch: 88%;
+	font-weight: 650;
+	font-size: 0.6875rem;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+}
+
+/* Figures and headings go the other way — wider than normal, tight tracking. */
+.display-wide {
+	font-stretch: 112%;
+	letter-spacing: -0.02em;
+}
+
+/* Show social links only on wider screens */
 @media (max-width: 700px) {
-  .mobile-hide {
-    display: none;
-  }
+	.mobile-hide {
+		display: none;
+	}
 }

@@ -8,19 +8,29 @@ const desktops = [
 	{ name: '1920x1080 (desktop)', width: 1920, height: 1080 }
 ];
 
+async function expectFitsOneScreen(page: import('@playwright/test').Page) {
+	const overflow = await page.evaluate(
+		() => document.documentElement.scrollHeight - window.innerHeight
+	);
+
+	expect(overflow, `page overflows viewport by ${overflow}px`).toBeLessThanOrEqual(0);
+
+	// The search box and Sources popover are the things most likely to be pushed below the fold.
+	await expect(page.getByPlaceholder('Search municipality…')).toBeInViewport();
+	await expect(page.getByRole('group').filter({ hasText: 'Sources' })).toBeInViewport();
+}
+
 for (const size of desktops) {
 	test(`fits one screen at ${size.name}`, async ({ page }) => {
 		await page.setViewportSize({ width: size.width, height: size.height });
 		await page.goto('./interactive');
 
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollHeight - window.innerHeight
-		);
+		await expectFitsOneScreen(page);
 
-		expect(overflow, `page overflows viewport by ${overflow}px`).toBeLessThanOrEqual(0);
-
-		// The search box and Sources popover are the things most likely to be pushed below the fold.
-		await expect(page.getByPlaceholder('Search municipality…')).toBeInViewport();
-		await expect(page.getByRole('group').filter({ hasText: 'Sources' })).toBeInViewport();
+		// The Tampere view adds a region-toggle row above the map and a differently-shaped
+		// panel (no survey row) — check it separately, since switching is a client-side
+		// toggle rather than a full page reload that would already be covered above.
+		await page.getByRole('tab', { name: 'Tampere Metro' }).click();
+		await expectFitsOneScreen(page);
 	});
 }

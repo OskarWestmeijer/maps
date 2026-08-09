@@ -1,8 +1,15 @@
 <script lang="ts">
 	import type { Kunta } from '$lib/interactive/finland';
-	import { colorFor } from '$lib/interactive/unemployment';
+	import { colorFor, MAP_SURFACE, NO_DATA_COLOR } from '$lib/interactive/unemployment';
+	import { TAMPERE_REGION } from '$lib/interactive/regions';
 
 	let { data } = $props();
+
+	// Both regions are in `data` already (computed at build time, see +page.server.ts) — the
+	// toggle just picks which one to render, no navigation or client fetch involved.
+	let region: 'finland' | 'tampere' = $state('finland');
+	const view = $derived(region === 'finland' ? data.finland : data.tampere);
+	const regionLabel = $derived(region === 'finland' ? 'Finland' : TAMPERE_REGION.label);
 
 	let hovered: Kunta | null = $state(null);
 
@@ -13,22 +20,54 @@
 	let search = $state('');
 	let searchOpen = $state(false);
 
-	const selected = $derived(data.kuntas.find((k) => k.code === selectedCode) ?? null);
+	const selected = $derived(view.kuntas.find((k) => k.code === selectedCode) ?? null);
 	const displayed = $derived(hovered ?? selected);
-	const sortedKuntas = $derived([...data.kuntas].sort((a, b) => a.name.localeCompare(b.name)));
+	const sortedKuntas = $derived([...view.kuntas].sort((a, b) => a.name.localeCompare(b.name)));
+
+	// Switching region doesn't remount the page (it's a `$state` toggle, not navigation), so
+	// a selection/search from one region has to be cleared by hand — otherwise it'd persist
+	// pointing at a municipality that doesn't exist in the other view.
+	function switchRegion(next: 'finland' | 'tampere') {
+		region = next;
+		hovered = null;
+		selectedCode = null;
+		search = '';
+		searchOpen = false;
+	}
 
 	// Personal-interest slice (unemployed jobseekers + open vacancies for software/app
 	// development occupations), kept separate from the choropleth's register figures — it
 	// only ever backs the panel, the same as `displayed` falls back to the whole country.
 	const softwareStats = $derived(
-		displayed ? (data.softwareJobs.stats.get(displayed.code) ?? null) : data.softwareJobs.national
+		displayed ? (view.softwareJobs.stats.get(displayed.code) ?? null) : view.softwareJobs.national
 	);
 
 	// The panel shows the same shape of data whether a municipality is hovered/selected or
 	// not — only the name, and where the numbers come from, differ.
-	const panelName = $derived(displayed?.name ?? 'Finland');
-	const panelRate = $derived(displayed?.rate ?? data.national.rate);
-	const panelUnemployed = $derived(displayed?.unemployed ?? data.national.unemployed);
+	const panelName = $derived(displayed?.name ?? regionLabel);
+	const panelRate = $derived(displayed?.rate ?? view.national.rate);
+	const panelUnemployed = $derived(displayed?.unemployed ?? view.national.unemployed);
+
+	// The panel's headline device: how far this rate sits from the national one, in
+	// percentage points, tinted with the very colour the map used to fill it. It's what makes
+	// the diverging scale readable without a legend — the number explains the colour.
+	// Suppressed when the panel *is* the national figure, which would trivially read "0,0".
+	const isCountryTotal = $derived(!displayed && region === 'finland');
+	const deviation = $derived(
+		panelRate !== null && view.countryRate !== null && !isCountryTotal
+			? panelRate - view.countryRate
+			: null
+	);
+
+	// The viewBox is in metres (EPSG:3067), not pixels, so the no-data hatch has to be sized
+	// off it — a fixed 6-unit pattern would be sub-millimetre on a 671 km-wide map. Deriving
+	// it from the current viewBox keeps the hatch visually identical across both regions.
+	const hatch = $derived(Number(view.viewBox.split(' ')[2]) / 160);
+
+	/** "+1,4" / "−0,8" — a real minus sign, and always signed so the two read as a pair. */
+	function signedPoints(value: number): string {
+		return `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(1).replace('.', ',')}`;
+	}
 
 	// Plain native <input list> renders Chrome's calendar-picker-style dropdown arrow, which
 	// reads as a combo/multi-select and doesn't match the rest of the UI — so matches are
@@ -102,20 +141,65 @@
 	class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-4 lg:h-[calc(100dvh-9.5rem)] lg:flex-row"
 >
 	<div class="flex min-h-0 flex-1 flex-col gap-3">
-		<div class="min-h-0 flex-1">
+		<!--
+			Underline tabs rather than a filled pill group: the map below is already a big
+			field of colour, and a solid control fighting it for attention was most of what
+			made the old header feel busy.
+		-->
+		<div class="flex items-center gap-6 border-b border-base-300" role="tablist">
+			{#each [{ id: 'finland', label: 'Finland' }, { id: 'tampere', label: TAMPERE_REGION.label }] as const as tab (tab.id)}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={region === tab.id}
+					class="region-tab"
+					class:is-active={region === tab.id}
+					onclick={() => switchRegion(tab.id)}
+				>
+					{tab.label}
+				</button>
+			{/each}
+		</div>
+
+		<!--
+			The sheet fills the whole map column and stays the same size in both regions; the
+			SVG letterboxes inside it. Sizing it to each region's own aspect ratio instead would
+			make the frame jump width when the tab changes.
+		-->
+		<div
+			class="max-h-[70vh] min-h-0 flex-1 rounded-lg lg:max-h-none"
+			style:background={MAP_SURFACE}
+		>
 			<svg
-				viewBox={data.viewBox}
-				class="h-full max-h-[70vh] w-full lg:max-h-none"
+				viewBox={view.viewBox}
+				class="h-full w-full"
 				role="img"
-				aria-label="Unemployment by municipality in Finland"
+				aria-label={`Unemployment by municipality in ${regionLabel}`}
 			>
-				{#each data.kuntas as kunta (kunta.code)}
+				<defs>
+					<!--
+						Municipalities with no published rate are hatched, not given a fourth grey:
+						next to the scale's neutral midpoint another flat grey would read as a data
+						class rather than an absence. Hatching for "no data" is the cartographic
+						convention.
+					-->
+					<pattern id="no-data" width={hatch} height={hatch} patternUnits="userSpaceOnUse">
+						<rect width={hatch} height={hatch} fill={NO_DATA_COLOR} />
+						<path d={`M0,${hatch} l${hatch},-${hatch}`} stroke="#c9ced6" stroke-width={hatch / 4} />
+					</pattern>
+				</defs>
+
+				{#each view.kuntas as kunta (kunta.code)}
 					<path
 						d={kunta.d}
 						class="kunta"
 						class:hovered={hovered?.code === kunta.code}
 						class:selected={selected?.code === kunta.code}
-						fill={selected?.code === kunta.code ? SELECTED_FILL : colorFor(kunta.rate)}
+						fill={selected?.code === kunta.code
+							? SELECTED_FILL
+							: kunta.rate === null
+								? 'url(#no-data)'
+								: colorFor(kunta.rate, view.countryRate)}
 						vector-effect="non-scaling-stroke"
 						role="button"
 						tabindex="0"
@@ -136,10 +220,10 @@
 			</svg>
 		</div>
 
-		<div class="flex items-center justify-end gap-3 text-xs text-gray-500">
+		<div class="flex items-center justify-end gap-3 text-xs" style:color="var(--ink-muted)">
 			<!-- Kept out of the panel so the period stays visible while hovering a municipality. -->
-			<span class="text-sm font-medium text-gray-600">
-				Data from {formatPeriod(data.period)}
+			<span class="stat-label">
+				Data from {formatPeriod(view.period)}
 			</span>
 
 			<!-- `details` carries the open/close state and keyboard support without any JS. -->
@@ -168,7 +252,7 @@
 							Everyone signed on with the employment service as unemployed, as a share of the labour
 							force. Published per municipality.
 						</p>
-						<p class="mt-1 text-gray-500">{data.source} · {formatPeriod(data.period)}</p>
+						<p class="mt-1 text-gray-500">{view.source} · {formatPeriod(view.period)}</p>
 					</section>
 
 					<section class="mt-3 border-t border-gray-200 pt-3">
@@ -179,9 +263,10 @@
 						</div>
 						<p>
 							Tilastokeskus's headline rate, from a monthly sample survey on the ILO definition.
+							National only — no regional breakdown, so it's hidden on the {TAMPERE_REGION.label} view.
 						</p>
 						<p class="mt-1 text-gray-500">
-							Tilastokeskus, työvoimatutkimus · {formatPeriod(data.survey.period)}
+							Tilastokeskus, työvoimatutkimus · {formatPeriod(view.survey.period)}
 						</p>
 					</section>
 
@@ -198,7 +283,7 @@
 						</p>
 						<p class="mt-1 text-gray-500">
 							KEHA-keskus, Työnvälitystilasto (PxWeb 12ti) · {formatPeriod(
-								data.softwareJobs.period
+								view.softwareJobs.period
 							)}
 						</p>
 					</section>
@@ -223,7 +308,7 @@
 				<input
 					type="text"
 					placeholder="Search municipality…"
-					class="input-bordered input join-item w-full"
+					class="input join-item w-full border-base-300 bg-base-100 input-sm focus:outline-accent"
 					bind:value={search}
 					oninput={() => (selectedCode = null)}
 					onfocus={() => (searchOpen = true)}
@@ -236,7 +321,7 @@
 				{#if selected}
 					<button
 						type="button"
-						class="btn join-item btn-ghost"
+						class="btn join-item border-base-300 btn-ghost btn-sm"
 						aria-label="Clear selection"
 						onclick={clearSearch}
 					>
@@ -264,6 +349,14 @@
 			{/if}
 		</div>
 
+		<!-- One row of the panel's stat table: a narrow uppercase label, a wide-set figure. -->
+		{#snippet statRow(label: string, value: string)}
+			<div class="flex items-baseline justify-between gap-3 py-1.5">
+				<span class="stat-label">{label}</span>
+				<span class="display-wide text-base font-semibold">{value}</span>
+			</div>
+		{/snippet}
+
 		<!--
 			Personal-interest slice, not part of the register/survey pair above: unemployed
 			jobseekers and open vacancies for the three software/app development occupation
@@ -271,47 +364,58 @@
 			`softwareStats`, which already picks the right source for either case.
 		-->
 		{#snippet softwareJobsBlock()}
-			<div class="mt-4 border-t border-gray-300 pt-3">
-				<div class="mb-1 flex items-center gap-1.5 text-sm text-gray-500">
+			<div class="mt-4 border-t border-base-300 pt-3">
+				<p class="stat-label mb-1 flex items-center gap-1.5">
 					<span aria-hidden="true">💻</span>
 					<span>Software &amp; app development</span>
-				</div>
-				<dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-					<dt class="text-gray-500">Unemployed</dt>
-					<dd class="text-right font-semibold">{count(softwareStats?.unemployed ?? null)}</dd>
-
-					<dt class="text-gray-500">Vacancies</dt>
-					<dd class="text-right font-semibold">{count(softwareStats?.vacancies ?? null)}</dd>
-				</dl>
+				</p>
+				{@render statRow('Unemployed', count(softwareStats?.unemployed ?? null))}
+				{@render statRow('Vacancies', count(softwareStats?.vacancies ?? null))}
 			</div>
 		{/snippet}
 
-		<div class="card bg-base-200 shadow-lg">
-			<div class="card-body min-h-60">
-				<h2 class="card-title">{panelName}</h2>
+		<div class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
+			<div class="min-h-60 p-5">
+				<h2 class="display-wide text-xl font-bold">{panelName}</h2>
 
-				<p class="mt-3 text-4xl font-bold">{percent(panelRate)}</p>
-				<p class="text-xs text-gray-500">Unemployment rate</p>
+				<p class="stat-label mt-4">Unemployment rate</p>
+				<p class="display-wide mt-0.5 text-5xl leading-none font-bold">{percent(panelRate)}</p>
 
-				<div class="mt-4 flex items-baseline justify-between border-t border-gray-300 pt-3">
-					<span class="text-sm text-gray-500">Unemployed</span>
-					<span class="text-lg font-semibold">{count(panelUnemployed)}</span>
+				{#if deviation !== null}
+					<!--
+						The device that lets the map go legend-free: the same colour the map filled
+						this area with, carrying the number that explains it. Reads as
+						"+1,4 pts vs Finland", so the hue never has to be decoded on its own.
+					-->
+					<p
+						class="mt-2.5 inline-flex items-baseline gap-1.5 rounded-full py-1 pr-3 pl-2.5 text-xs font-semibold"
+						style:background={colorFor(panelRate, view.countryRate)}
+						style:color={deviation >= 0.75 || deviation < -0.75 ? '#ffffff' : 'var(--ink)'}
+					>
+						<span class="display-wide text-sm">{signedPoints(deviation)}</span>
+						<span class="font-medium opacity-90">pts vs Finland</span>
+					</p>
+				{/if}
+
+				<div class="mt-4 border-t border-base-300 pt-2">
+					{@render statRow('Unemployed', count(panelUnemployed))}
 				</div>
 
 				{@render softwareJobsBlock()}
 
-				{#if !displayed && data.survey.rate !== null}
+				{#if isCountryTotal && view.survey.rate !== null}
 					<!--
-						The headline figure most people know, national-only. Shown next to the
-						register rate on purpose: seeing 10,5 % and 12,8 % labelled side by side is
-						what stops the map's higher numbers reading as an error.
+						The headline figure most people know, national-only — hidden on the
+						regional view, since it has no municipal/regional breakdown to pair with a
+						regional rate. Shown next to the register rate on purpose: seeing 10,5 %
+						and 12,8 % labelled side by side is what stops the map's higher numbers
+						reading as an error.
 					-->
-					<div class="mt-4 border-t border-gray-300 pt-3">
-						<div class="flex items-baseline justify-between gap-2">
-							<span class="text-sm text-gray-500">Työttömyysaste</span>
-							<span class="text-lg font-semibold">{percent(data.survey.rate)}</span>
-						</div>
-						<p class="text-xs text-gray-500">Tilastokeskus's headline rate. Survey-based.</p>
+					<div class="mt-4 border-t border-base-300 pt-3">
+						{@render statRow('Työttömyysaste', percent(view.survey.rate))}
+						<p class="mt-0.5 text-xs" style:color="var(--ink-faint)">
+							Tilastokeskus's headline rate. Survey-based.
+						</p>
 					</div>
 				{/if}
 			</div>
@@ -320,22 +424,77 @@
 </main>
 
 <style>
+	/*
+		A light hairline, not the old navy one: at 308 municipalities a dark stroke built a
+		visible mesh over the whole country and dulled every fill under it. Matching the sheet
+		colour instead makes the municipalities read as tiles laid on it, and lets the
+		diverging scale carry the image.
+	*/
 	.kunta {
-		stroke: var(--color-secondary);
-		stroke-width: 0.5;
+		stroke: #f5f7f9;
+		stroke-width: 0.75;
 		cursor: pointer;
+		transition: opacity 120ms ease;
 	}
 
 	.kunta.hovered {
-		stroke-width: 2;
+		stroke: var(--ink);
+		stroke-width: 1.75;
 	}
 
 	.kunta.selected {
-		stroke: var(--color-primary);
+		stroke: var(--ink);
 		stroke-width: 2;
 	}
 
 	.kunta:focus {
 		outline: none;
+	}
+
+	.kunta:focus-visible {
+		stroke: var(--ink);
+		stroke-width: 2;
+	}
+
+	/*
+		Underline tabs. The active one is marked by weight and an ink rule rather than a filled
+		background, so switching regions doesn't flash a block of colour next to the map.
+	*/
+	.region-tab {
+		position: relative;
+		padding: 0.4rem 0;
+		font-stretch: 96%;
+		font-size: 0.9375rem;
+		font-weight: 500;
+		color: var(--ink-faint);
+		background: none;
+		border: none;
+		cursor: pointer;
+		transition:
+			color 120ms ease,
+			box-shadow 120ms ease;
+	}
+
+	.region-tab:hover {
+		color: var(--ink-muted);
+	}
+
+	.region-tab.is-active {
+		color: var(--ink);
+		font-weight: 700;
+		box-shadow: inset 0 -2px 0 0 var(--ink);
+	}
+
+	.region-tab:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+		border-radius: 2px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.kunta,
+		.region-tab {
+			transition: none;
+		}
 	}
 </style>

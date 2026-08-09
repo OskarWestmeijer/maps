@@ -62,9 +62,16 @@ function toPathData(coordinates: number[][][][]): string {
 	return subpaths.join('');
 }
 
+/**
+ * @param paddingRatio Fraction of the bbox's width/height to pad on every side, default 0
+ *   (today's exact behaviour). Whole-country calls don't need this — the coastline's own
+ *   irregularity gives visual breathing room — but a bbox tightly fitted to a handful of
+ *   contiguous municipalities (e.g. a regional view) would otherwise touch the SVG edge.
+ */
 export function toFinlandMap(
 	geojson: KuntaCollection,
-	stats: Map<string, KuntaStats> = new Map()
+	stats: Map<string, KuntaStats> = new Map(),
+	paddingRatio = 0
 ): FinlandMap {
 	let minX = Infinity;
 	let maxX = -Infinity;
@@ -96,12 +103,15 @@ export function toFinlandMap(
 		})
 		.sort((a, b) => a.name.localeCompare(b.name, 'fi'));
 
+	const padX = (maxX - minX) * paddingRatio;
+	const padY = (maxY - minY) * paddingRatio;
+
 	// Y is negated above, so the top edge of the viewBox is -maxY.
 	const viewBox = [
-		Math.round(minX),
-		Math.round(-maxY),
-		Math.round(maxX - minX),
-		Math.round(maxY - minY)
+		Math.round(minX - padX),
+		Math.round(-maxY - padY),
+		Math.round(maxX - minX + 2 * padX),
+		Math.round(maxY - minY + 2 * padY)
 	].join(' ');
 
 	return { kuntas, viewBox };

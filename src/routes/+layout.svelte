@@ -18,17 +18,17 @@
 			<div class="mobile-hide">
 				<a
 					href="https://maps.oskar-westmeijer.com"
-					class="btn rounded-lg btn-ghost text-lg font-bold text-white hover:text-black"
+					class="display-wide btn rounded-lg btn-ghost text-lg font-bold text-white hover:bg-white/10"
 					>&#129517; Maps</a
 				>
 			</div>
 		</div>
 		<div class="navbar-center">
-			<a href="/" class="btn btn-ghost text-lg text-white hover:text-black">🗺️ Gallery</a>
-			<a href="/interactive" class="btn btn-ghost text-lg text-white hover:text-black"
+			<a href="/" class="btn btn-ghost font-medium text-white hover:bg-white/10">🗺️ Gallery</a>
+			<a href="/interactive" class="btn btn-ghost font-medium text-white hover:bg-white/10"
 				>🧭 Interactive</a
 			>
-			<a href="/about" class="btn btn-ghost text-lg text-white hover:text-black">💡 About</a>
+			<a href="/about" class="btn btn-ghost font-medium text-white hover:bg-white/10">💡 About</a>
 		</div>
 		<div class="navbar-end">
 			<div class="mobile-hide">
@@ -36,8 +36,8 @@
 					href="https://github.com/OskarWestmeijer/maps"
 					aria-label="Oskar Westmeijer Github maps repository"
 				>
-					<button class="btn rounded-lg">
-						<img alt="Github logo" class="size-6" src="/github.svg" />
+					<button class="btn rounded-lg border-white/15 bg-white/10 text-white hover:bg-white/20">
+						<img alt="Github logo" class="size-6 invert" src="/github.svg" />
 					</button>
 				</a>
 			</div>

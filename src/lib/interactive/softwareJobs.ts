@@ -38,6 +38,28 @@ export type SoftwareJobsData = {
 	source: string;
 };
 
+/**
+ * Rolls up an arbitrary set of municipalities into one figure — same idea as
+ * `aggregateKuntaStats` in `unemployment.ts`, for a hand-picked region that has no
+ * equivalent pre-aggregated row in the source export. The `...IsMinimum` flags are OR'd
+ * across the list for type parity, but — like the per-kunta ones — stay uninspected by the
+ * panel, which shows plain summed numbers rather than a "+" lower-bound marker.
+ */
+export function aggregateSoftwareJobStats(list: SoftwareJobStats[]): SoftwareJobStats {
+	const sum = (field: 'unemployed' | 'vacancies'): number | null => {
+		const known = list.map((s) => s[field]).filter((v): v is number => v !== null);
+
+		return known.length ? known.reduce((a, b) => a + b, 0) : null;
+	};
+
+	return {
+		unemployed: sum('unemployed'),
+		unemployedIsMinimum: list.some((s) => s.unemployedIsMinimum),
+		vacancies: sum('vacancies'),
+		vacanciesIsMinimum: list.some((s) => s.vacanciesIsMinimum)
+	};
+}
+
 const WHOLE_COUNTRY = 'SSS';
 
 const COLUMNS = {

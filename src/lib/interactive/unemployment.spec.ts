@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
 	toUnemploymentData,
+	aggregateKuntaStats,
 	colorFor,
 	NO_DATA_COLOR,
-	UNEMPLOYMENT_CLASSES,
-	type PxWebExport
+	DEVIATION_CLASSES,
+	type PxWebExport,
+	type KuntaStats
 } from './unemployment';
 
 const px: PxWebExport = {
@@ -72,27 +74,109 @@ describe('toUnemploymentData', () => {
 	});
 });
 
+describe('aggregateKuntaStats', () => {
+	it('sums fields and recomputes the rate from the sums, not by averaging per-kunta rates', () => {
+		// A big and a small kunta with very different rates: averaging the rates (13% and 8%)
+		// would give ~10.5%, but the weighted rate from the sums is what should come out.
+		const big: KuntaStats = { rate: 13.1, labourForce: 18440, jobseekers: 1494, unemployed: 529 };
+		const small: KuntaStats = { rate: 8.4, labourForce: 3604, jobseekers: 586, unemployed: 164 };
+
+		expect(aggregateKuntaStats([big, small])).toEqual({
+			rate: ((529 + 164) / (18440 + 3604)) * 100,
+			labourForce: 18440 + 3604,
+			jobseekers: 1494 + 586,
+			unemployed: 529 + 164
+		});
+	});
+
+	it('sums each field independently, so one suppressed field does not null the others', () => {
+		// Mirrors the Åland-style case in the source data: a rate can be suppressed while the
+		// labour force is still published.
+		const suppressedRate: KuntaStats = {
+			rate: null,
+			labourForce: 900,
+			jobseekers: 12,
+			unemployed: null
+		};
+		const known: KuntaStats = { rate: 13.1, labourForce: 18440, jobseekers: 1494, unemployed: 529 };
+
+		const result = aggregateKuntaStats([suppressedRate, known]);
+
+		expect(result.labourForce).toBe(900 + 18440);
+		expect(result.jobseekers).toBe(12 + 1494);
+		// `unemployed` is known for one of the two, so it sums rather than going null.
+		expect(result.unemployed).toBe(529);
+		expect(result.rate).toBe((529 / (900 + 18440)) * 100);
+	});
+
+	it('returns null for a field only when every entry is null', () => {
+		const allSuppressed: KuntaStats = {
+			rate: null,
+			labourForce: null,
+			jobseekers: null,
+			unemployed: null
+		};
+
+		expect(aggregateKuntaStats([allSuppressed, allSuppressed])).toEqual({
+			rate: null,
+			labourForce: null,
+			jobseekers: null,
+			unemployed: null
+		});
+	});
+});
+
 describe('colorFor', () => {
+	// The national rate the scale diverges around, matching the current export.
+	const national = 12.8;
+
+	const luminance = (hex: string) =>
+		[1, 3, 5]
+			.map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+			.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+			.reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+
 	it('returns the no-data colour for a missing figure', () => {
-		expect(colorFor(null)).toBe(NO_DATA_COLOR);
+		expect(colorFor(null, national)).toBe(NO_DATA_COLOR);
 	});
 
-	it('puts a rate in the bucket whose lower bound it meets', () => {
-		expect(colorFor(2.5)).toBe(UNEMPLOYMENT_CLASSES[0].color);
-		expect(colorFor(8.9)).toBe(UNEMPLOYMENT_CLASSES[1].color);
-		expect(colorFor(9)).toBe(UNEMPLOYMENT_CLASSES[2].color);
-		expect(colorFor(19.1)).toBe(UNEMPLOYMENT_CLASSES[5].color);
+	it('buckets by distance from the reference rate, not by the rate itself', () => {
+		// 9,4 % is a low rate in absolute terms but only 3,4 points under the national one,
+		// so it lands in the middle green — not the darkest.
+		expect(colorFor(9.4, national)).toBe(DEVIATION_CLASSES[1].color);
+		// The same rate against a lower reference is 2,9 points above average: red, not green.
+		expect(colorFor(9.4, 6.5)).toBe(DEVIATION_CLASSES[5].color);
 	});
 
-	it('keeps lightness falling as the rate rises, so the ramp survives colour blindness', () => {
-		const luminance = (hex: string) =>
-			[1, 3, 5]
-				.map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
-				.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
-				.reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+	it('gives the neutral midpoint to rates sitting on the reference', () => {
+		expect(colorFor(national, national)).toBe(DEVIATION_CLASSES[3].color);
+		expect(colorFor(national + 0.5, national)).toBe(DEVIATION_CLASSES[3].color);
+		expect(colorFor(national - 0.5, national)).toBe(DEVIATION_CLASSES[3].color);
+	});
 
-		const steps = UNEMPLOYMENT_CLASSES.map((b) => luminance(b.color));
+	it('reaches the extreme classes at the real ends of the data', () => {
+		// Luoto is the lowest municipality (2.5 %) and Outokumpu the highest (19.1 %).
+		expect(colorFor(2.5, national)).toBe(DEVIATION_CLASSES[0].color);
+		expect(colorFor(19.1, national)).toBe(DEVIATION_CLASSES[6].color);
+	});
 
-		expect(steps.every((l, i) => i === 0 || l < steps[i - 1])).toBe(true);
+	it('falls back to the neutral class when there is no reference to diverge around', () => {
+		expect(colorFor(9.4, null)).toBe(DEVIATION_CLASSES[3].color);
+	});
+
+	it('keeps each arm darkening away from the midpoint, so it survives colour blindness', () => {
+		// Both arms are single-hue ramps running light (at the neutral midpoint) to dark (at
+		// the extreme), which is what preserves magnitude when hue collapses. Validated in
+		// full by the `dataviz` skill's validate_palette.js --ordinal; this pins the property.
+		const below = DEVIATION_CLASSES.slice(0, 3).map((b) => luminance(b.color));
+		const above = DEVIATION_CLASSES.slice(4).map((b) => luminance(b.color));
+
+		// Green arm is ordered dark -> light as it approaches the midpoint.
+		expect(below.every((l, i) => i === 0 || l > below[i - 1])).toBe(true);
+		// Red arm runs light -> dark leaving the midpoint.
+		expect(above.every((l, i) => i === 0 || l < above[i - 1])).toBe(true);
+		// The midpoint is lighter than either neighbour, as a diverging midpoint must be.
+		expect(luminance(DEVIATION_CLASSES[3].color)).toBeGreaterThan(below[2]);
+		expect(luminance(DEVIATION_CLASSES[3].color)).toBeGreaterThan(above[0]);
 	});
 });

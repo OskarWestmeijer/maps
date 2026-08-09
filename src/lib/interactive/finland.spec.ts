@@ -96,4 +96,17 @@ describe('toFinlandMap', () => {
 		// Alfa has no row in the statistics, so it must stay null rather than inherit.
 		expect(merged[0].rate).toBeNull();
 	});
+
+	it('defaults to no padding, reproducing the exact bbox', () => {
+		// The whole-country call passes no third argument — default 0 must give byte-for-byte
+		// the same viewBox as before padding existed, which is what the earlier test asserts.
+		expect(toFinlandMap(collection, new Map(), 0).viewBox).toBe(viewBox);
+	});
+
+	it('pads the bbox on every side when a ratio is given, for a tightly-cropped region', () => {
+		// x: 0..400 (width 400), y: 5000..7100 (height 2100) -> flipped top edge -7100
+		const padded = toFinlandMap(collection, new Map(), 0.05);
+
+		expect(padded.viewBox).toBe('-20 -7205 440 2310');
+	});
 });

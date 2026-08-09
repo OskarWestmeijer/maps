@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { toSoftwareJobsData, OCCUPATION_GROUPS } from './softwareJobs';
+import {
+	toSoftwareJobsData,
+	aggregateSoftwareJobStats,
+	OCCUPATION_GROUPS,
+	type SoftwareJobStats
+} from './softwareJobs';
 import type { PxWebExport } from './unemployment';
 
 const px: PxWebExport = {
@@ -81,6 +86,68 @@ describe('toSoftwareJobsData', () => {
 	it('carries the period and source through', () => {
 		expect(result.period).toBe('2026M06');
 		expect(result.source).toBe('KEHA-keskus, Työnvälitystilasto');
+	});
+});
+
+describe('aggregateSoftwareJobStats', () => {
+	it('sums unemployed and vacancies across the list', () => {
+		const a: SoftwareJobStats = {
+			unemployed: 224,
+			unemployedIsMinimum: false,
+			vacancies: 35,
+			vacanciesIsMinimum: false
+		};
+		const b: SoftwareJobStats = {
+			unemployed: 7,
+			unemployedIsMinimum: false,
+			vacancies: 0,
+			vacanciesIsMinimum: false
+		};
+
+		expect(aggregateSoftwareJobStats([a, b])).toEqual({
+			unemployed: 231,
+			unemployedIsMinimum: false,
+			vacancies: 35,
+			vacanciesIsMinimum: false
+		});
+	});
+
+	it('sums known values even when one entry is null, and ORs the minimum flags', () => {
+		const known: SoftwareJobStats = {
+			unemployed: 5,
+			unemployedIsMinimum: false,
+			vacancies: 0,
+			vacanciesIsMinimum: true
+		};
+		const suppressed: SoftwareJobStats = {
+			unemployed: null,
+			unemployedIsMinimum: false,
+			vacancies: null,
+			vacanciesIsMinimum: false
+		};
+
+		expect(aggregateSoftwareJobStats([known, suppressed])).toEqual({
+			unemployed: 5,
+			unemployedIsMinimum: false,
+			vacancies: 0,
+			vacanciesIsMinimum: true
+		});
+	});
+
+	it('returns null for a field only when every entry is null', () => {
+		const allSuppressed: SoftwareJobStats = {
+			unemployed: null,
+			unemployedIsMinimum: false,
+			vacancies: null,
+			vacanciesIsMinimum: false
+		};
+
+		expect(aggregateSoftwareJobStats([allSuppressed, allSuppressed])).toEqual({
+			unemployed: null,
+			unemployedIsMinimum: false,
+			vacancies: null,
+			vacanciesIsMinimum: false
+		});
 	});
 });
 
