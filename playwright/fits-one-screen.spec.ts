@@ -19,8 +19,8 @@ for (const size of desktops) {
 
 		expect(overflow, `page overflows viewport by ${overflow}px`).toBeLessThanOrEqual(0);
 
-		// The legend is the thing most likely to be pushed below the fold.
-		await expect(page.getByText('18 and over %')).toBeInViewport();
+		// The search box and Sources popover are the things most likely to be pushed below the fold.
+		await expect(page.getByPlaceholder('Search municipality…')).toBeInViewport();
 		await expect(page.getByRole('group').filter({ hasText: 'Sources' })).toBeInViewport();
 	});
 }
