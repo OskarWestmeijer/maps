@@ -32,4 +32,3 @@ jobs:
             cd /deployments/maps
             git pull
             ./deploy.sh ${{ inputs.image_tag }}
-            docker ps
