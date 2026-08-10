@@ -1,8 +1,9 @@
 /**
- * Builds the page data for the interactive map, either for the whole country or scoped down
- * to a hand-picked set of municipalities (`natcodes`) — used for the Tampere metro toggle.
- * Runs at build time from `+page.server.ts`, once per region, so both views ship in one
- * page's compact prerendered payload with no client-side geometry processing.
+ * Builds the page data for the interactive map, either for the whole country or for the
+ * Tampere metro toggle — each backed by its own GeoJSON file rather than one filtered out of
+ * the other, since the region has its own dedicated, less-simplified geometry (see
+ * `regions.ts`). Runs at build time from `+page.server.ts`, once per region, so both views
+ * ship in one page's compact prerendered payload with no client-side geometry processing.
  *
  * Data files are named `<measure>_<source type>_<scope>_<period>[_<pxweb-table-id>]`. The
  * period is part of the filename so the vintage is obvious at a glance, and the PxWeb table
@@ -10,7 +11,6 @@
  * replacing an export with a newer month is a rename plus an edit to these import paths.
  */
 
-import geojson from './finland_kunnat_2km.geojson?raw';
 import unemployment from './unemployment_register_kunnat_2026-06_12r5.json';
 import labourSurvey from './unemployment_survey_national_2026-06.csv?raw';
 import softwareJobsExport from './software_occupations_register_kunnat_2026-06_12ti.json';
@@ -19,10 +19,22 @@ import { toUnemploymentData, aggregateKuntaStats, type PxWebExport } from './une
 import { toLabourSurvey } from './survey';
 import { toSoftwareJobsData, aggregateSoftwareJobStats } from './softwareJobs';
 
-// Only a filtered/regional call needs breathing room around its bbox — see `toFinlandMap`.
+// Only a region's bbox needs breathing room — see `toFinlandMap`.
 const REGION_PADDING_RATIO = 0.05;
 
-export function loadInteractiveData(natcodes?: string[]) {
+export function loadInteractiveData(collection: KuntaCollection, region?: { natcodes: string[] }) {
+	if (region) {
+		const found = collection.features.map((f) => f.properties.natcode).sort();
+		const expected = [...region.natcodes].sort();
+
+		if (found.join(',') !== expected.join(',')) {
+			throw new Error(
+				`Tampere region geometry doesn't match TAMPERE_REGION.natcodes.\n` +
+					`  file: ${found.join(', ')}\n  expected: ${expected.join(', ')}`
+			);
+		}
+	}
+
 	const {
 		stats,
 		national: countryNational,
@@ -31,23 +43,14 @@ export function loadInteractiveData(natcodes?: string[]) {
 	} = toUnemploymentData(unemployment as PxWebExport);
 	const softwareJobsData = toSoftwareJobsData(softwareJobsExport as PxWebExport);
 
-	const collection = JSON.parse(geojson) as KuntaCollection;
-	const features = natcodes
-		? collection.features.filter((f) => natcodes.includes(f.properties.natcode))
-		: collection.features;
-
-	const { kuntas, viewBox } = toFinlandMap(
-		{ ...collection, features },
-		stats,
-		natcodes ? REGION_PADDING_RATIO : 0
-	);
+	const { kuntas, viewBox } = toFinlandMap(collection, stats, region ? REGION_PADDING_RATIO : 0);
 
 	// The register export's `SSS` row is a whole-country total only — there's no equivalent
 	// pre-aggregated row for an arbitrary hand-picked region, so a region's totals are rolled
-	// up from the same per-kunta figures the map itself renders (via the already-filtered
+	// up from the same per-kunta figures the map itself renders (via the already-scoped
 	// `kuntas`, so the aggregate and the map always cover exactly the same set).
-	const national = natcodes ? aggregateKuntaStats(kuntas) : countryNational;
-	const softwareNational = natcodes
+	const national = region ? aggregateKuntaStats(kuntas) : countryNational;
+	const softwareNational = region
 		? aggregateSoftwareJobStats(
 				kuntas.map(
 					(k) =>

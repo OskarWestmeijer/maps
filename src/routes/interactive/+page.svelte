@@ -170,11 +170,24 @@
 			class="max-h-[70vh] min-h-0 flex-1 rounded-lg lg:max-h-none"
 			style:background={MAP_SURFACE}
 		>
+			<!--
+				svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions
+				(the svg itself isn't meant to become a keyboard-operable control — it's a
+				mouse-only convenience mirroring "click outside to close", same idea as clicking
+				a modal's backdrop. The keyboard-reachable equivalent already exists as the
+				"Clear selection" button next to the search box.)
+			-->
 			<svg
 				viewBox={view.viewBox}
 				class="h-full w-full"
 				role="img"
 				aria-label={`Unemployment by municipality in ${regionLabel}`}
+				onclick={(e) => {
+					// Municipality <path> clicks bubble up here too, but by then e.target is the
+					// path, not the svg itself — only a click that lands on the empty sheet
+					// (sea, gaps at the coastline) should clear the selection.
+					if (e.target === e.currentTarget) clearSearch();
+				}}
 			>
 				<defs>
 					<!--

@@ -2,8 +2,14 @@
  * Hand-maintained municipality list for the Tampere metro toggle on the interactive map.
  * There's no seutukunta -> kunta membership table anywhere in this repo's data — the PxWeb
  * exports only carry pre-aggregated SK/MK/ELY region rows, not membership lists — so this is
- * copied by hand from Tampereen kaupunkiseutu's official member municipalities and checked
- * against `finland_kunnat_2km.geojson`'s natcodes.
+ * copied by hand from Tampereen kaupunkiseutu's official member municipalities.
+ *
+ * The region no longer needs this list to *select* its municipalities — it has its own
+ * dedicated geometry file (`tampere_kunnat_20m.geojson`, simplified to a finer 20 m
+ * tolerance than the whole-country file, affordable at 8 municipalities) rather than being
+ * filtered out of the whole-country one. `natcodes` is kept anyway as a build-time integrity
+ * check (see `loadInteractiveData.ts`) — if that file is ever regenerated with a different
+ * municipality set, the build fails loudly instead of quietly shipping the wrong region.
  */
 
 export type Region = {
