@@ -1,7 +1,7 @@
 <script lang="ts">
 	import MapShell from '$lib/interactive/MapShell.svelte';
 	import StatRow from '$lib/interactive/StatRow.svelte';
-	import { densityColorFor, inkOnDensity } from '$lib/interactive/population';
+	import { changeColorFor, changeLabelFor, inkOnChange } from '$lib/interactive/population';
 	import type { PopulationArea } from '$lib/interactive/loadPopulationViews';
 	import { count, decimal, formatPeriod, signed } from '$lib/interactive/format';
 	import type { RegionId } from '$lib/interactive/views';
@@ -34,24 +34,21 @@
 	});
 
 	function fillFor(area: PopulationArea): string {
-		return area.density === null ? 'url(#no-data)' : densityColorFor(area.density);
+		return area.change === null ? 'url(#no-data)' : changeColorFor(area.change);
 	}
 
-	/** "12,4 / km²" — the mapped figure, in the panel and in every area's accessible label. */
-	function perKm2(density: number | null): string {
-		return density === null ? 'no data' : `${decimal(density)} / km²`;
+	/** "+14,9 per 1 000" — always signed, so growth and decline read as one scale. */
+	function perMille(change: number | null): string {
+		if (change === null) return 'no data';
+
+		const sign = change > 0 ? '+' : change < 0 ? '−' : '';
+
+		return `${sign}${decimal(Math.abs(change))} per 1 000`;
 	}
 
-	/**
-	 * How many times the national density an area sits at. A *ratio*, not the unemployment
-	 * map's difference in points: density spans four orders of magnitude, so "+3 217,5 per km²
-	 * vs Finland" for Helsinki would be arithmetic rather than a comparison, while "×174" is
-	 * the fact. Precision shrinks as the number grows, since ×174,3 claims more than it means.
-	 */
-	function ratioLabel(ratio: number): string {
-		const digits = ratio >= 10 ? 0 : ratio >= 1 ? 1 : 2;
-
-		return `×${ratio.toFixed(digits).replace('.', ',')}`;
+	/** Signed, one decimal — for the "vs Finland" gap, which is in the same per-mille units. */
+	function signedDecimal(value: number): string {
+		return `${value > 0 ? '+' : value < 0 ? '−' : ''}${decimal(Math.abs(value))}`;
 	}
 </script>
 
@@ -62,75 +59,81 @@
 <MapShell
 	bind:region
 	views={shellViews}
-	metric="Population density"
+	metric="Population change"
 	{fillFor}
-	valueLabel={(area) => perKm2(area.density)}
+	valueLabel={(area) => perMille(area.change)}
 >
-	{#snippet panel({ displayed, areaNoun })}
+	{#snippet panel({ displayed })}
 		<!--
 			Same shape whether or not an area is hovered/selected: without one, the panel shows
 			the whole view's totals (the country, or the metro region's roll-up).
 		-->
 		{@const area = displayed ?? view.total}
 		<!--
-			The comparison is suppressed when the panel *is* the national figure, which would
-			trivially read "×1,0" — same rule as the unemployment map's deviation chip. Region is
-			the whole country at coarser granularity, so its blank state is national too; only
-			Tampere Metro's is a genuinely different, smaller area.
+			The gap to the national trend, in the same per-mille units the map is drawn in. The row
+			stays put on the national panel rather than disappearing — a vanishing row shifts
+			everything under it — but reads "baseline" there instead of a trivially true 0,0.
 		-->
 		{@const isCountryTotal = !displayed && region !== 'tampere'}
-		{@const ratio =
-			area.density !== null && view.countryDensity && !isCountryTotal
-				? area.density / view.countryDensity
-				: null}
+		{@const vsFinland =
+			area.change !== null && view.countryChange !== null ? area.change - view.countryChange : null}
 
 		<h2 class="display-wide text-xl font-bold">{area.name}</h2>
 
-		<p class="stat-label mt-4">Population density</p>
-		<p class="display-wide mt-0.5 text-5xl leading-none font-bold">{decimal(area.density)}</p>
-		<p class="stat-label mt-1" style:color="var(--ink-faint)">inhabitants per km² of land</p>
+		<p class="stat-label mt-4">Population change</p>
+		<p class="display-wide mt-0.5 text-5xl leading-none font-bold">
+			{area.change === null ? 'no data' : signedDecimal(area.change)}
+		</p>
+		<p class="stat-label mt-1" style:color="var(--ink-faint)">
+			per 1 000 inhabitants, {formatPeriod(view.period)}
+		</p>
 
-		{#if ratio !== null}
+		{#if area.change !== null}
 			<!--
-				The same device as the unemployment map's deviation chip, and what lets both maps
-				go legend-free: the exact colour the map filled this area with, carrying the number
-				that explains it — so the hue never has to be decoded on its own, and every area
-				answers the question the panel is really asked, "compared with Finland?".
+				The device that lets the map go legend-free, same as the unemployment map's chip: the
+				exact colour the map filled this area with, carrying what that colour means in words.
+				The scale is anchored at zero rather than at the national figure, so the chip names
+				the direction — which is what the hue encodes — and the "vs Finland" row below
+				carries the comparison.
 			-->
 			<p
 				class="mt-2.5 inline-flex items-baseline gap-1.5 rounded-full py-1 pr-3 pl-2.5 text-xs font-semibold"
-				style:background={densityColorFor(area.density)}
-				style:color={inkOnDensity(area.density)}
+				style:background={changeColorFor(area.change)}
+				style:color={inkOnChange(area.change)}
 			>
-				<span class="display-wide text-sm">{ratioLabel(ratio)}</span>
-				<span class="font-medium opacity-90">vs Finland</span>
-			</p>
-		{:else if area.density !== null}
-			<!--
-				The national figure itself: no ratio to show, but the density's own place on the
-				scale is still worth stating, and it keeps the block from collapsing when nothing
-				is hovered.
-			-->
-			<p class="mt-2.5 text-xs" style:color="var(--ink-faint)">
-				The whole-country average — every {areaNoun} is compared against this.
+				<span class="display-wide text-sm">{changeLabelFor(area.change)}</span>
 			</p>
 		{/if}
 
 		<div class="mt-4 border-t border-base-300 pt-2">
-			<StatRow label="Population" value={count(area.population)} />
-			<StatRow label="Land area" value={`${count(Math.round(area.landArea ?? 0))} km²`} />
+			<StatRow label="Net change" value={`${signed(area.totalChange)} people`} />
+			<StatRow
+				label="vs Finland"
+				value={isCountryTotal
+					? 'baseline'
+					: vsFinland === null
+						? '—'
+						: `${signedDecimal(vsFinland)} pts`}
+			/>
 		</div>
 
 		<!--
-			The flows behind the headcount, for the whole year the export covers — labelled,
-			because a change figure is meaningless without the span it happened over. Annual
-			rather than monthly on purpose; see the note at the top of `population.ts`.
+			The two flows the headline is the sum of: whether an area's change came from births
+			and deaths or from people moving. Nationally these point opposite ways — natural
+			change −13 377 against net migration +31 233 — which is the whole story of the map.
 		-->
 		<div class="mt-4 border-t border-base-300 pt-3">
-			<p class="stat-label mb-1">Change during {formatPeriod(view.period)}</p>
+			<p class="stat-label mb-1">What moved it</p>
 			<StatRow label="Natural change" value={signed(area.naturalChange)} />
 			<StatRow label="Net migration" value={signed(area.netMigration)} />
-			<StatRow label="Total" value={signed(area.totalChange)} />
+		</div>
+
+		<div class="mt-4 border-t border-base-300 pt-3">
+			<StatRow label="Population" value={count(area.population)} />
+			<StatRow
+				label="Density"
+				value={area.density === null ? '—' : `${decimal(area.density)} / km²`}
+			/>
 		</div>
 	{/snippet}
 
@@ -153,13 +156,13 @@
 
 		<section class="mt-3 border-t border-base-300 pt-3">
 			<div class="mb-1 flex flex-wrap items-center gap-2">
-				<h3 class="text-sm font-semibold">Land area</h3>
-				<span class="badge badge-outline badge-sm">The denominator</span>
+				<h3 class="text-sm font-semibold">Density</h3>
+				<span class="badge badge-outline badge-sm">Side panel only</span>
 			</div>
 			<p>
-				Official land area (maa-pinta-ala) per municipality, carried by the boundary data rather
-				than by any statistics table — water is excluded, which is why sparsely-settled lake
-				districts don't come out lighter than they are.
+				The panel's density is that population over the official land area (maa-pinta-ala) the
+				boundary data carries — water excluded, so a {areaNoun} isn't diluted by the lakes and sea inside
+				its boundary. It doesn't colour the map.
 			</p>
 			<p class="mt-1 text-base-content/60">Maanmittauslaitos</p>
 		</section>
@@ -184,7 +187,7 @@
 				<dd>Maanmittauslaitos</dd>
 
 				<dt class="font-semibold">Scale</dt>
-				<dd>7 classes, roughly logarithmic</dd>
+				<dd>Diverging, 7 classes around zero</dd>
 			</dl>
 		</section>
 	{/snippet}

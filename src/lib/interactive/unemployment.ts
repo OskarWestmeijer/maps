@@ -200,14 +200,38 @@ export function toUnemploymentData(
  * Bands are chosen against the real distribution (304 municipalities with a rate, national
  * 12.8 %): roughly 78 / 84 / 45 / 46 / 22 / 20 / 9 across the seven classes.
  */
+/**
+ * The site's diverging pair, shared by both interactive maps so green and red mean one thing
+ * across the whole site: green is the good/growing direction, red the bad/shrinking one, with
+ * a neutral grey between them. Each arm runs light (nearest the midpoint) to dark (at the
+ * extreme). `ink` is the text colour for a chip filled with that class — whichever of white
+ * or map ink measures better against that exact colour, rather than a rule of thumb that
+ * leaves the light classes at ~2:1.
+ */
+export const DIVERGING_SCALE = {
+	neutral: { color: '#c5cbd2', ink: 'var(--map-ink)' },
+	/** Light to dark. */
+	green: [
+		{ color: '#90b697', ink: 'var(--map-ink)' },
+		{ color: '#5a8f65', ink: 'var(--map-ink)' },
+		{ color: '#1d6835', ink: '#ffffff' }
+	],
+	/** Light to dark. */
+	red: [
+		{ color: '#de958e', ink: 'var(--map-ink)' },
+		{ color: '#bd615b', ink: '#ffffff' },
+		{ color: '#9a2929', ink: '#ffffff' }
+	]
+} as const;
+
 export const DEVIATION_CLASSES = [
-	{ min: -Infinity, label: 'far below', color: '#1d6835' },
-	{ min: -4, label: 'below', color: '#5a8f65' },
-	{ min: -2, label: 'a little below', color: '#90b697' },
-	{ min: -0.75, label: 'about average', color: '#c5cbd2' },
-	{ min: 0.75, label: 'a little above', color: '#de958e' },
-	{ min: 2, label: 'above', color: '#bd615b' },
-	{ min: 4, label: 'far above', color: '#9a2929' }
+	{ min: -Infinity, label: 'far below', ...DIVERGING_SCALE.green[2] },
+	{ min: -4, label: 'below', ...DIVERGING_SCALE.green[1] },
+	{ min: -2, label: 'a little below', ...DIVERGING_SCALE.green[0] },
+	{ min: -0.75, label: 'about average', ...DIVERGING_SCALE.neutral },
+	{ min: 0.75, label: 'a little above', ...DIVERGING_SCALE.red[0] },
+	{ min: 2, label: 'above', ...DIVERGING_SCALE.red[1] },
+	{ min: 4, label: 'far above', ...DIVERGING_SCALE.red[2] }
 ] as const;
 
 /** Index of the neutral, "about the national rate" class. */

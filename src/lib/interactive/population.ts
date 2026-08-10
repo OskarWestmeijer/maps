@@ -26,7 +26,7 @@
 // `NO_DATA_COLOR` is shared with the unemployment map so both sit on the same sheet and
 // hatch absences the same way — the two maps differ in what they encode, not in what a
 // missing figure looks like.
-import { NO_DATA_COLOR, type PxWebExport } from './unemployment';
+import { DIVERGING_SCALE, NO_DATA_COLOR, type PxWebExport } from './unemployment';
 
 export type PopulationStats = {
 	/** Väkiluku at the end of the period. */
@@ -182,32 +182,7 @@ export function aggregatePopulationStats(list: PopulationStats[]): PopulationSta
 	) as PopulationStats;
 }
 
-/**
- * Density is *sequential*, not diverging like the unemployment map: there is no meaningful
- * midpoint to sit either side of — more people per km² is simply more — so it takes a
- * single-hue ramp running light to dark, which is what encodes magnitude when hue is held
- * constant (and what survives colour blindness).
- *
- * The classes are roughly logarithmic because the data is: Finland's municipalities run from
- * 0,15/km² (Savukoski) to 3 236/km² (Helsinki), four orders of magnitude, and equal-width
- * classes would put ~305 of 308 municipalities in the lightest one. These breaks give
- * roughly 30/59/65/77/50/17/10 municipalities per class.
- *
- * The ramp passes all four checks of the `dataviz` skill's `validate_palette.js --ordinal`
- * against `MAP_SURFACE` (monotone lightness, adjacent ΔL ≥ 0.06, light end 2,20:1 against
- * the sheet, one hue). Re-run that if you re-pick the colours; don't eyeball it.
- */
-export const DENSITY_CLASSES = [
-	{ min: 0, label: 'under 2', color: '#b4a0d2' },
-	{ min: 2, label: '2–5', color: '#a387cd' },
-	{ min: 5, label: '5–10', color: '#916ec7' },
-	{ min: 10, label: '10–25', color: '#8055be' },
-	{ min: 25, label: '25–100', color: '#6d3fae' },
-	{ min: 100, label: '100–500', color: '#583093' },
-	{ min: 500, label: '500 and over', color: '#41266e' }
-] as const;
-
-/** Inhabitants per km² of land. Null (hatched on the map) when either input is missing. */
+/** Inhabitants per km² of land. Null when either input is missing. */
 export function densityOf(population: number | null, landArea: number | null): number | null {
 	if (population === null || landArea === null || landArea <= 0) return null;
 
@@ -215,24 +190,76 @@ export function densityOf(population: number | null, landArea: number | null): n
 }
 
 /**
- * Ink for text sitting on a class colour — white on the dark half of the ramp, the map's
- * dark ink on the light half, whichever contrasts better against that exact fill. The worst
- * case is the middle class at 3,9:1; every other class clears 5:1.
+ * The mapped measure: last year's change as a rate per 1 000 inhabitants.
+ *
+ * *Relative*, not the raw headcount, because a choropleth colours areas of wildly different
+ * size — mapping absolute change would light up the five largest cities and leave 300
+ * municipalities indistinguishable near zero, re-encoding population rather than change.
+ * Per 1 000 puts Kökar's −16 people (−75,8) and Helsinki's +10 374 (+14,9) on one scale.
+ *
+ * The denominator is the end-of-period population the export publishes, not the mean of the
+ * year's start and end — the difference is a fraction of a per-mille at these rates, and it
+ * keeps the figure reproducible from two columns of one file.
  */
-export function inkOnDensity(density: number | null): string {
-	const index = DENSITY_CLASSES.findLastIndex((c) => density !== null && density >= c.min);
+export function changePer1000(
+	totalChange: number | null,
+	population: number | null
+): number | null {
+	if (totalChange === null || population === null || population <= 0) return null;
 
-	return index >= 2 ? '#ffffff' : 'var(--map-ink)';
+	return (totalChange / population) * 1000;
 }
 
-export function densityColorFor(density: number | null): string {
-	if (density === null) return NO_DATA_COLOR;
+/**
+ * A *diverging* scale anchored at zero, because that's the question the map is asked: which
+ * areas are growing and which are shrinking? Zero is a real midpoint here (unlike density,
+ * which this map used to show and which has none).
+ *
+ * It uses `DIVERGING_SCALE` — the same green/grey/red the unemployment map uses — on purpose:
+ * one colour vocabulary across the site, where red is the direction you'd rather not be going
+ * in. Each arm is a single-hue ramp running light (at the midpoint) to dark (at the extreme),
+ * so magnitude survives where hue collapses under red-green colour blindness; both pass all
+ * four checks of the `dataviz` skill's `validate_palette.js --ordinal` against `MAP_SURFACE`.
+ * Note that validator's *categorical* mode fails on any ramp by design — neighbours within an
+ * arm sit close on purpose; use `--ordinal`, per arm.
+ *
+ * Band edges (±2 / ±7 / ±15 per 1 000) come from the real distribution, giving roughly
+ * 69/91/53/23/42/23/7 municipalities per class. 227 of 308 municipalities shrank in 2025, so
+ * the map leans red — that is the finding, not a scaling artefact.
+ */
+export const CHANGE_CLASSES = [
+	{ min: -Infinity, label: 'shrinking fast', ...DIVERGING_SCALE.red[2] },
+	{ min: -15, label: 'shrinking', ...DIVERGING_SCALE.red[1] },
+	{ min: -7, label: 'shrinking slowly', ...DIVERGING_SCALE.red[0] },
+	{ min: -2, label: 'about flat', ...DIVERGING_SCALE.neutral },
+	{ min: 2, label: 'growing slowly', ...DIVERGING_SCALE.green[0] },
+	{ min: 7, label: 'growing', ...DIVERGING_SCALE.green[1] },
+	{ min: 15, label: 'growing fast', ...DIVERGING_SCALE.green[2] }
+] as const;
 
-	let color: string = DENSITY_CLASSES[0].color;
+/** Index of the neutral, "neither growing nor shrinking" class. */
+const FLAT_CLASS = 3;
 
-	for (const bucket of DENSITY_CLASSES) {
-		if (density >= bucket.min) color = bucket.color;
-	}
+/** Index of the class a value falls in — null areas take the neutral one. */
+function changeClassIndex(change: number | null): number {
+	return change === null ? FLAT_CLASS : CHANGE_CLASSES.findLastIndex((c) => change >= c.min);
+}
 
-	return color;
+export function changeColorFor(change: number | null): string {
+	return change === null ? NO_DATA_COLOR : CHANGE_CLASSES[changeClassIndex(change)].color;
+}
+
+/** "shrinking fast", "growing slowly" — the words the chip puts on the colour. */
+export function changeLabelFor(change: number | null): string {
+	return change === null ? 'no data' : CHANGE_CLASSES[changeClassIndex(change)].label;
+}
+
+/**
+ * Text colour for a chip filled with an area's class colour. Carried by the palette itself
+ * (see `DIVERGING_SCALE`) rather than derived from a threshold here, because which of white
+ * or map ink wins is a property of each colour, measured: the tightest class lands at 4,1:1
+ * and the rest clear 4,2:1.
+ */
+export function inkOnChange(change: number | null): string {
+	return CHANGE_CLASSES[changeClassIndex(change)].ink;
 }

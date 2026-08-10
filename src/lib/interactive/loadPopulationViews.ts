@@ -21,6 +21,7 @@ import { assertCompleteAssignment, assignToRegions } from './membership';
 import { TAMPERE_REGION } from './regions';
 import {
 	aggregatePopulationStats,
+	changePer1000,
 	densityOf,
 	EMPTY_POPULATION_STATS,
 	toPopulationData,
@@ -36,20 +37,26 @@ export type PopulationView = {
 	viewBox: string;
 	/** The area's own totals: the `SSS` row for Finland, a roll-up for anything smaller. */
 	total: PopulationArea;
-	/** Finland's own density, carried on *every* view: it's what the panel's "vs Finland"
-	 *  ratio compares against, so the comparison means the same thing on every tab. */
-	countryDensity: number | null;
+	/** Finland's own change per 1 000, carried on *every* view: it's what the panel's "vs
+	 *  Finland" row compares against, so the comparison means the same thing on every tab. */
+	countryChange: number | null;
 	period: string;
 	source: string;
 };
 
 export type PopulationArea = Kunta<PopulationStats> & {
-	/** Inhabitants per km² of land — the mapped figure. */
+	/** Last year's change per 1 000 inhabitants — the mapped figure. */
+	change: number | null;
+	/** Inhabitants per km² of land. Shown in the panel; no longer what colours the map. */
 	density: number | null;
 };
 
-function withDensity(kunta: Kunta<PopulationStats>): PopulationArea {
-	return { ...kunta, density: densityOf(kunta.population, kunta.landArea) };
+function withDerived(kunta: Kunta<PopulationStats>): PopulationArea {
+	return {
+		...kunta,
+		change: changePer1000(kunta.totalChange, kunta.population),
+		density: densityOf(kunta.population, kunta.landArea)
+	};
 }
 
 /**
@@ -60,12 +67,15 @@ function rollUp(name: string, areas: PopulationArea[]): PopulationArea {
 	const stats = aggregatePopulationStats(areas);
 	const landArea = areas.reduce((sum, a) => sum + (a.landArea ?? 0), 0) || null;
 
+	// Both derived figures are recomputed from the summed counts rather than averaged across
+	// members — municipalities differ hugely in size, so an average would misweight them.
 	return {
 		...stats,
 		name,
 		code: '',
 		landArea,
 		d: '',
+		change: changePer1000(stats.totalChange, stats.population),
 		density: densityOf(stats.population, landArea)
 	};
 }
@@ -82,7 +92,7 @@ export function loadPopulationViews(): {
 	const tampereCollection = JSON.parse(tampereGeojson) as KuntaCollection;
 
 	const municipal = toFinlandMap(kunnatCollection, stats, EMPTY_POPULATION_STATS);
-	const areas = municipal.kuntas.map(withDensity);
+	const areas = municipal.kuntas.map(withDerived);
 	const byCode = new Map(areas.map((a) => [a.code, a]));
 
 	// The Region view: municipal figures grouped by the maakunta each municipality's
@@ -110,7 +120,7 @@ export function loadPopulationViews(): {
 		...EMPTY_POPULATION_STATS,
 		landArea: 0
 	});
-	const regionAreas = regional.kuntas.map(withDensity);
+	const regionAreas = regional.kuntas.map(withDerived);
 
 	const tampere = toFinlandMap(
 		tampereCollection,
@@ -118,7 +128,7 @@ export function loadPopulationViews(): {
 		EMPTY_POPULATION_STATS,
 		SUBSET_PADDING_RATIO
 	);
-	const tampereAreas = tampere.kuntas.map(withDensity);
+	const tampereAreas = tampere.kuntas.map(withDerived);
 
 	// Finland's own total comes from the export's whole-country row; the land area behind it
 	// is the sum of the municipalities', the same figure the map is drawn from.
@@ -129,17 +139,18 @@ export function loadPopulationViews(): {
 		code: '',
 		landArea: countryLandArea,
 		d: '',
+		change: changePer1000(national.totalChange, national.population),
 		density: densityOf(national.population, countryLandArea)
 	};
 
-	const countryDensity = countryTotal.density;
+	const countryChange = countryTotal.change;
 
 	return {
 		finland: {
 			areas,
 			viewBox: municipal.viewBox,
 			total: countryTotal,
-			countryDensity,
+			countryChange,
 			period,
 			source
 		},
@@ -148,7 +159,7 @@ export function loadPopulationViews(): {
 			areas: regionAreas,
 			viewBox: regional.viewBox,
 			total: countryTotal,
-			countryDensity,
+			countryChange,
 			period,
 			source
 		},
@@ -156,7 +167,7 @@ export function loadPopulationViews(): {
 			areas: tampereAreas,
 			viewBox: tampere.viewBox,
 			total: rollUp(TAMPERE_REGION.label, tampereAreas),
-			countryDensity,
+			countryChange,
 			period,
 			source
 		}

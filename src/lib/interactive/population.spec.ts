@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
 	aggregatePopulationStats,
-	densityColorFor,
+	changeColorFor,
+	changeLabelFor,
+	changePer1000,
+	CHANGE_CLASSES,
 	densityOf,
-	DENSITY_CLASSES,
+	inkOnChange,
 	toPopulationData,
 	type PopulationStats
 } from './population';
-import { NO_DATA_COLOR, type PxWebExport } from './unemployment';
+import { DIVERGING_SCALE, NO_DATA_COLOR, type PxWebExport } from './unemployment';
 
 /**
  * Shaped like the annual export (121w) the map ships: `[year, area]` keys and `ssaaty-`
@@ -172,22 +175,68 @@ describe('densityOf', () => {
 	});
 });
 
-describe('densityColorFor', () => {
-	it('is a one-hue ramp: every class has its own colour, light to dark', () => {
-		const colors = DENSITY_CLASSES.map((c) => c.color);
+describe('changePer1000', () => {
+	it("scales change by the area's own size, so a village and a city compare", () => {
+		// Kökar lost 16 of 211; Helsinki gained 10 374 of 694 392. The city's change is 600×
+		// larger in people and a third the size as a rate — which is the point of the measure.
+		expect(changePer1000(-16, 211)?.toFixed(1)).toBe('-75.8');
+		expect(changePer1000(10374, 694392)?.toFixed(1)).toBe('14.9');
+	});
 
-		expect(new Set(colors).size).toBe(DENSITY_CLASSES.length);
+	it('is null when either side is missing, and never divides by zero', () => {
+		expect(changePer1000(null, 1000)).toBeNull();
+		expect(changePer1000(10, null)).toBeNull();
+		expect(changePer1000(10, 0)).toBeNull();
+	});
+});
+
+describe('changeColorFor', () => {
+	it('is diverging: a neutral midpoint with one hue either side of zero', () => {
+		const flat = CHANGE_CLASSES[3];
+
+		expect(flat.min).toBe(-2);
+		// Symmetric band edges, so a loss and a gain of the same size sit the same distance out.
+		expect(CHANGE_CLASSES.map((c) => c.min)).toEqual([-Infinity, -15, -7, -2, 2, 7, 15]);
+		expect(new Set(CHANGE_CLASSES.map((c) => c.color)).size).toBe(CHANGE_CLASSES.length);
 	});
 
 	it('picks the class the value falls in, edges included', () => {
-		expect(densityColorFor(0.15)).toBe(DENSITY_CLASSES[0].color);
-		expect(densityColorFor(2)).toBe(DENSITY_CLASSES[1].color);
-		expect(densityColorFor(4.9)).toBe(DENSITY_CLASSES[1].color);
-		expect(densityColorFor(25)).toBe(DENSITY_CLASSES[4].color);
-		expect(densityColorFor(3236.1)).toBe(DENSITY_CLASSES[6].color);
+		expect(changeColorFor(-75.8)).toBe(CHANGE_CLASSES[0].color);
+		expect(changeColorFor(-15)).toBe(CHANGE_CLASSES[1].color);
+		expect(changeColorFor(-2.1)).toBe(CHANGE_CLASSES[2].color);
+		// Bands run [min, next), so an edge belongs to the class above it: −2 is the bottom of
+		// "about flat", not the top of "shrinking slowly".
+		expect(changeColorFor(-2)).toBe(CHANGE_CLASSES[3].color);
+		// Zero is the anchor and must land in the neutral class, not either arm.
+		expect(changeColorFor(0)).toBe(CHANGE_CLASSES[3].color);
+		expect(changeColorFor(2)).toBe(CHANGE_CLASSES[4].color);
+		expect(changeColorFor(23.6)).toBe(CHANGE_CLASSES[6].color);
 	});
 
-	it('hands an area with no density the hatch colour, not a class', () => {
-		expect(densityColorFor(null)).toBe(NO_DATA_COLOR);
+	it('hands an area with no figure the hatch colour, not a class', () => {
+		expect(changeColorFor(null)).toBe(NO_DATA_COLOR);
+	});
+
+	it('names the direction in words, which is what the chip puts on the colour', () => {
+		expect(changeLabelFor(-30)).toBe('shrinking fast');
+		expect(changeLabelFor(0)).toBe('about flat');
+		expect(changeLabelFor(20)).toBe('growing fast');
+		expect(changeLabelFor(null)).toBe('no data');
+	});
+
+	it("takes each class's measured ink, so chip text stays legible on every fill", () => {
+		expect(inkOnChange(-30)).toBe('#ffffff');
+		expect(inkOnChange(-5)).toBe('var(--map-ink)');
+		expect(inkOnChange(0)).toBe('var(--map-ink)');
+		expect(inkOnChange(5)).toBe('var(--map-ink)');
+		expect(inkOnChange(20)).toBe('#ffffff');
+	});
+
+	it("reuses the unemployment map's arms, so green and red mean one thing site-wide", () => {
+		// Growing takes the green the other map spends on "below the national rate"; shrinking
+		// takes its red. Sharing `DIVERGING_SCALE` is what stops the two drifting apart.
+		expect(changeColorFor(20)).toBe(DIVERGING_SCALE.green[2].color);
+		expect(changeColorFor(0)).toBe(DIVERGING_SCALE.neutral.color);
+		expect(changeColorFor(-30)).toBe(DIVERGING_SCALE.red[2].color);
 	});
 });
