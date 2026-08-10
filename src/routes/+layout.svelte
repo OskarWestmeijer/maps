@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.ico';
+	import ThemeToggle from '$lib/ThemeToggle.svelte';
 
 	let { children } = $props();
 </script>
@@ -30,7 +31,8 @@
 			>
 			<a href="/about" class="btn btn-ghost font-medium text-white hover:bg-white/10">💡 About</a>
 		</div>
-		<div class="navbar-end">
+		<div class="navbar-end gap-2">
+			<ThemeToggle />
 			<div class="mobile-hide">
 				<a
 					href="https://github.com/OskarWestmeijer/maps"

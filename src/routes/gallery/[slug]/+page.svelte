@@ -4,7 +4,7 @@
 </script>
 
 <main class="mx-auto mt-10 flex max-w-4xl flex-col gap-6 px-4">
-	<a href="/" class="flex items-center gap-1 text-sm text-gray-500 hover:underline">
+	<a href="/" class="flex items-center gap-1 text-sm text-base-content/60 hover:underline">
 		<span>←</span>
 		<span>Back to Gallery</span>
 	</a>
@@ -13,7 +13,9 @@
 		<div>
 			<h1 class="text-3xl font-bold">{map.title}</h1>
 			{#if map.type || map.year}
-				<p class="text-xs text-gray-500">{map.type}{map.type && map.year ? ', ' : ''}{map.year}</p>
+				<p class="text-xs text-base-content/60">
+					{map.type}{map.type && map.year ? ', ' : ''}{map.year}
+				</p>
 			{/if}
 		</div>
 		{#if map.hdLink}
@@ -21,14 +23,14 @@
 				href={map.hdLink}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="btn mt-1 btn-sm btn-secondary"
+				class="btn mt-1 btn-secondary btn-sm"
 			>
 				Map in HD
 			</a>
 		{/if}
 	</div>
 
-	<div class="flex flex-col gap-4 text-gray-700">
+	<div class="flex flex-col gap-4 text-base-content/80">
 		{#if map.description}
 			{#each map.description as paragraph}
 				<p>{paragraph}</p>

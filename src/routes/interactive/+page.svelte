@@ -252,10 +252,10 @@
 							Everyone signed on with the employment service as unemployed, as a share of the labour
 							force. Published per municipality.
 						</p>
-						<p class="mt-1 text-gray-500">{view.source} · {formatPeriod(view.period)}</p>
+						<p class="mt-1 text-base-content/60">{view.source} · {formatPeriod(view.period)}</p>
 					</section>
 
-					<section class="mt-3 border-t border-gray-200 pt-3">
+					<section class="mt-3 border-t border-base-300 pt-3">
 						<div class="mb-1 flex flex-wrap items-center gap-2">
 							<h3 class="text-sm font-semibold">Työttömyysaste</h3>
 							<span class="badge badge-sm badge-neutral">Survey</span>
@@ -265,12 +265,12 @@
 							Tilastokeskus's headline rate, from a monthly sample survey on the ILO definition.
 							National only — no regional breakdown, so it's hidden on the {TAMPERE_REGION.label} view.
 						</p>
-						<p class="mt-1 text-gray-500">
+						<p class="mt-1 text-base-content/60">
 							Tilastokeskus, työvoimatutkimus · {formatPeriod(view.survey.period)}
 						</p>
 					</section>
 
-					<section class="mt-3 border-t border-gray-200 pt-3">
+					<section class="mt-3 border-t border-base-300 pt-3">
 						<div class="mb-1 flex flex-wrap items-center gap-2">
 							<h3 class="text-sm font-semibold">Software &amp; app development jobs</h3>
 							<span class="badge badge-sm badge-neutral">Register</span>
@@ -281,14 +281,14 @@
 							programmers, and other software &amp; app developers and analysts (occupation codes
 							2513, 2514, 2519), summed. Not used to colour the map.
 						</p>
-						<p class="mt-1 text-gray-500">
+						<p class="mt-1 text-base-content/60">
 							KEHA-keskus, Työnvälitystilasto (PxWeb 12ti) · {formatPeriod(
 								view.softwareJobs.period
 							)}
 						</p>
 					</section>
 
-					<section class="mt-3 border-t border-gray-200 pt-3 text-gray-500">
+					<section class="mt-3 border-t border-base-300 pt-3 text-base-content/60">
 						<dl class="grid grid-cols-[auto_1fr] gap-x-3">
 							<dt class="font-semibold">Boundaries</dt>
 							<dd>Maanmittauslaitos</dd>
@@ -390,7 +390,7 @@
 					<p
 						class="mt-2.5 inline-flex items-baseline gap-1.5 rounded-full py-1 pr-3 pl-2.5 text-xs font-semibold"
 						style:background={colorFor(panelRate, view.countryRate)}
-						style:color={deviation >= 0.75 || deviation < -0.75 ? '#ffffff' : 'var(--ink)'}
+						style:color={deviation >= 0.75 || deviation < -0.75 ? '#ffffff' : 'var(--map-ink)'}
 					>
 						<span class="display-wide text-sm">{signedPoints(deviation)}</span>
 						<span class="font-medium opacity-90">pts vs Finland</span>
@@ -438,12 +438,12 @@
 	}
 
 	.kunta.hovered {
-		stroke: var(--ink);
+		stroke: var(--map-ink);
 		stroke-width: 1.75;
 	}
 
 	.kunta.selected {
-		stroke: var(--ink);
+		stroke: var(--map-ink);
 		stroke-width: 2;
 	}
 
@@ -452,7 +452,7 @@
 	}
 
 	.kunta:focus-visible {
-		stroke: var(--ink);
+		stroke: var(--map-ink);
 		stroke-width: 2;
 	}
 

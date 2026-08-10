@@ -1,20 +1,45 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="customtheme">
+	<head>
+		<meta charset="utf-8" />
+		<!--
+		Sets the real data-theme before the rest of <head>/<body> is parsed, so the page never
+		flashes the wrong theme. Without an explicit data-theme, DaisyUI's *own* built-in dark
+		theme would auto-activate under prefers-color-scheme: dark via
+		`:root:not([data-theme])` — leaving <html> pinned to a known theme (light by default,
+		here overwritten to the stored/system choice) opts the page out of that entirely and
+		hands theme selection to ThemeToggle.svelte + this script instead. See app.css for the
+		two theme blocks (customtheme / customtheme-dark).
+	-->
+		<script>
+			(function () {
+				try {
+					var stored = localStorage.getItem('maps-theme');
+					var theme =
+						stored === 'customtheme' || stored === 'customtheme-dark'
+							? stored
+							: window.matchMedia('(prefers-color-scheme: dark)').matches
+								? 'customtheme-dark'
+								: 'customtheme';
 
-<head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<meta name="description" content="Explore thematic and topographic maps created with QGIS.">
-	<meta name="keywords"
-		content="maps, QGIS, thematic maps, topographic maps, Netherlands, Germany, forest coverage, elevation">
-	<meta name="author" content="Oskar Westmeijer">
-	<meta name="robots" content="index, follow">
-	<title>Maps | QGIS</title>
-	%sveltekit.head%
-</head>
+					document.documentElement.setAttribute('data-theme', theme);
+				} catch (e) {}
+			})();
+		</script>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="description" content="Explore thematic and topographic maps created with QGIS." />
+		<meta
+			name="keywords"
+			content="maps, QGIS, thematic maps, topographic maps, Netherlands, Germany, forest coverage, elevation"
+		/>
+		<meta name="author" content="Oskar Westmeijer" />
+		<meta name="robots" content="index, follow" />
+		<title>Maps | QGIS</title>
+		%sveltekit.head%
+	</head>
 
-<body data-sveltekit-preload-data="hover">
-	<div style="display: contents">%sveltekit.body%</div>
-</body>
-
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
 </html>

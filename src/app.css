@@ -53,6 +53,64 @@
 	--color-success: #dcefe1;
 	--color-warning: #fdf0cf;
 	--color-error: #f7ddda;
+
+	/*
+	  Explicit on both themes deliberately: leave any of these unset and DaisyUI's own
+	  bundled (unused) "light" theme leaks its `--color-*-content` values in through a bare
+	  `:where(:root)` rule it always ships, regardless of which theme is active — harmless
+	  here since that theme's base-content happens to be dark-on-light too, but it silently
+	  broke the dark theme below (dark text inherited onto a dark background) until pinned.
+	*/
+	--color-base-content: #101a2b;
+	--color-primary-content: #ffffff;
+	--color-secondary-content: #ffffff;
+	--color-accent-content: #ffffff;
+	--color-neutral-content: #ffffff;
+	--color-info-content: #101a2b;
+	--color-success-content: #101a2b;
+	--color-warning-content: #101a2b;
+	--color-error-content: #101a2b;
+}
+
+/*
+  Dark counterpart, switched to via `data-theme="customtheme-dark"` on <html> (see
+  ThemeToggle.svelte) — never via prefers-color-scheme directly. The navbar's navy
+  (primary/secondary/neutral) already reads dark in the light theme, so it's kept as-is
+  here; only the surfaces (base-*) and accent (brightened for contrast on a dark base)
+  change. The map itself is deliberately *not* part of this: its diverging colour scale is
+  contrast-validated against its own light sheet (MAP_SURFACE in unemployment.ts) and stays
+  a fixed "light island" regardless of page theme — see --map-ink below.
+*/
+@plugin 'daisyui/theme' {
+	name: 'customtheme-dark';
+	default: false;
+	prefersdark: false;
+	color-scheme: dark;
+
+	--color-primary: #1b2a44;
+	--color-secondary: #1b2a44;
+	--color-accent: #5b9dfd;
+	--color-accent-focus: #0b1220;
+	--color-neutral: #1b2a44;
+	--color-base-100: #141b2b;
+	--color-base-200: #0f1521;
+	--color-base-300: #29334a;
+	--color-info: #1b3252;
+	--color-success: #16362a;
+	--color-warning: #3b2f14;
+	--color-error: #3c1c20;
+
+	--color-base-content: #eef1f6;
+	--color-primary-content: #ffffff;
+	--color-secondary-content: #ffffff;
+	/* Unlike the light theme's accent-content, this is dark ink, not white: the brightened
+	   accent blue used here is light enough that white text on it loses too much contrast. */
+	--color-accent-content: #0b1220;
+	--color-neutral-content: #ffffff;
+	--color-info-content: #eef1f6;
+	--color-success-content: #eef1f6;
+	--color-warning-content: #eef1f6;
+	--color-error-content: #eef1f6;
 }
 
 @theme {
@@ -65,6 +123,17 @@
 	--ink: #101a2b;
 	--ink-muted: #5b6879;
 	--ink-faint: #8a94a3;
+	/* Fixed — never overridden by the dark theme. For content that sits on the map's
+     always-light sheet (hover/selection strokes, the deviation chip's text): those
+     backgrounds are the same light pastel fills in both themes, so the text/stroke
+     drawn against them must stay dark for contrast too, regardless of page theme. */
+	--map-ink: #101a2b;
+}
+
+[data-theme='customtheme-dark'] {
+	--ink: #eef1f6;
+	--ink-muted: #a7b0c2;
+	--ink-faint: #7c8496;
 }
 
 html {

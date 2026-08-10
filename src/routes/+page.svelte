@@ -12,7 +12,7 @@
 				<img src={map.src} alt={map.alt} class="h-120 w-full object-cover" />
 				<div class="mt-2 mb-2 text-center">
 					<p class="font-semibold">{map.title}</p>
-					<p class="text-xs text-gray-500">{map.type}, {map.year}</p>
+					<p class="text-xs text-base-content/60">{map.type}, {map.year}</p>
 				</div>
 			</a>
 		{/each}
