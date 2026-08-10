@@ -26,8 +26,10 @@
 		</div>
 		<div class="navbar-center">
 			<a href="/" class="btn btn-ghost font-medium text-white hover:bg-white/10">🗺️ Gallery</a>
-			<a href="/interactive" class="btn btn-ghost font-medium text-white hover:bg-white/10"
-				>🧭 Interactive</a
+			<!-- Points straight at the default map; /interactive itself only redirects here. -->
+			<a
+				href="/interactive/unemployment"
+				class="btn btn-ghost font-medium text-white hover:bg-white/10">🧭 Interactive</a
 			>
 			<a href="/about" class="btn btn-ghost font-medium text-white hover:bg-white/10">💡 About</a>
 		</div>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { toFinlandMap, type KuntaCollection } from './finland';
+import { EMPTY_KUNTA_STATS } from './unemployment';
 
 function feature(namefin: string, coordinates: number[][][][]) {
 	return {
@@ -49,7 +50,7 @@ const collection: KuntaCollection = {
 };
 
 describe('toFinlandMap', () => {
-	const { kuntas, viewBox } = toFinlandMap(collection);
+	const { kuntas, viewBox } = toFinlandMap(collection, new Map(), EMPTY_KUNTA_STATS);
 
 	it('sorts municipalities by Finnish name', () => {
 		expect(kuntas.map((k) => k.name)).toEqual(['Alfa', 'Bravo']);
@@ -82,15 +83,16 @@ describe('toFinlandMap', () => {
 			rate: null,
 			labourForce: null,
 			jobseekers: null,
-			unemployed: null
+			unemployed: null,
+			vacancies: null
 		});
 	});
 
 	it('merges statistics in by natcode', () => {
 		const stats = new Map([
-			['002', { rate: 13.1, labourForce: 7747, jobseekers: 1494, unemployed: 1013 }]
+			['002', { rate: 13.1, labourForce: 7747, jobseekers: 1494, unemployed: 1013, vacancies: 212 }]
 		]);
-		const merged = toFinlandMap(collection, stats).kuntas;
+		const merged = toFinlandMap(collection, stats, EMPTY_KUNTA_STATS).kuntas;
 
 		expect(merged[1]).toMatchObject({ name: 'Bravo', rate: 13.1, labourForce: 7747 });
 		// Alfa has no row in the statistics, so it must stay null rather than inherit.
@@ -98,14 +100,14 @@ describe('toFinlandMap', () => {
 	});
 
 	it('defaults to no padding, reproducing the exact bbox', () => {
-		// The whole-country call passes no third argument — default 0 must give byte-for-byte
+		// The whole-country call passes no padding ratio — default 0 must give byte-for-byte
 		// the same viewBox as before padding existed, which is what the earlier test asserts.
-		expect(toFinlandMap(collection, new Map(), 0).viewBox).toBe(viewBox);
+		expect(toFinlandMap(collection, new Map(), EMPTY_KUNTA_STATS, 0).viewBox).toBe(viewBox);
 	});
 
 	it('pads the bbox on every side when a ratio is given, for a tightly-cropped region', () => {
 		// x: 0..400 (width 400), y: 5000..7100 (height 2100) -> flipped top edge -7100
-		const padded = toFinlandMap(collection, new Map(), 0.05);
+		const padded = toFinlandMap(collection, new Map(), EMPTY_KUNTA_STATS, 0.05);
 
 		expect(padded.viewBox).toBe('-20 -7205 440 2310');
 	});

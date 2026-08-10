@@ -29,6 +29,19 @@ export type KuntaStats = {
 	jobseekers: number | null;
 	/** Registered jobseekers who are unemployed — the numerator behind `rate`. */
 	unemployed: number | null;
+	/** Open vacancies registered with the employment service on the reference day. All
+	 * occupations — the software/app-development slice of the same measure lives in
+	 * `softwareJobs.ts`, from a different export. */
+	vacancies: number | null;
+};
+
+/** Every field null — merged into areas the export has no row for. */
+export const EMPTY_KUNTA_STATS: KuntaStats = {
+	rate: null,
+	labourForce: null,
+	jobseekers: null,
+	unemployed: null,
+	vacancies: null
 };
 
 export type UnemploymentData = {
@@ -55,7 +68,7 @@ export type UnemploymentData = {
  * per-kunta rates — municipalities vary hugely in size, so an average would misweight them.
  */
 export function aggregateKuntaStats(list: KuntaStats[]): KuntaStats {
-	const sum = (field: 'labourForce' | 'jobseekers' | 'unemployed'): number | null => {
+	const sum = (field: 'labourForce' | 'jobseekers' | 'unemployed' | 'vacancies'): number | null => {
 		const known = list.map((k) => k[field]).filter((v): v is number => v !== null);
 
 		return known.length ? known.reduce((a, b) => a + b, 0) : null;
@@ -69,7 +82,7 @@ export function aggregateKuntaStats(list: KuntaStats[]): KuntaStats {
 			? (unemployed / labourForce) * 100
 			: null;
 
-	return { rate, labourForce, jobseekers, unemployed };
+	return { rate, labourForce, jobseekers, unemployed, vacancies: sum('vacancies') };
 }
 
 const WHOLE_COUNTRY = 'SSS';
@@ -78,7 +91,8 @@ const COLUMNS = {
 	rate: 'TYOTOSUUS',
 	labourForce: 'TYOVOIMATK',
 	jobseekers: 'HAKIJALOPUSSA',
-	unemployed: 'TYOTTOMATLOPUSSA'
+	unemployed: 'TYOTTOMATLOPUSSA',
+	vacancies: 'AVPAIKATLOPUSSA'
 } as const;
 
 /**
@@ -123,7 +137,7 @@ export function toUnemploymentData(
 ): UnemploymentData {
 	const indexes = columnIndexes(px.columns);
 	const stats = new Map<string, KuntaStats>();
-	let national: KuntaStats = { rate: null, labourForce: null, jobseekers: null, unemployed: null };
+	let national: KuntaStats = EMPTY_KUNTA_STATS;
 	let period = '';
 
 	for (const row of px.data) {
@@ -132,7 +146,8 @@ export function toUnemploymentData(
 			rate: parseRate(row.values[indexes.rate]),
 			labourForce: parseRate(row.values[indexes.labourForce]),
 			jobseekers: parseRate(row.values[indexes.jobseekers]),
-			unemployed: parseRate(row.values[indexes.unemployed])
+			unemployed: parseRate(row.values[indexes.unemployed]),
+			vacancies: parseRate(row.values[indexes.vacancies])
 		};
 
 		if (timePeriod) period = timePeriod;

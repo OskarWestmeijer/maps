@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-// The interactive page is meant to sit in a single viewport on a desktop screen: no
-// vertical scrollbar, and the legend + info button visible without scrolling.
+// Both interactive maps are meant to sit in a single viewport on a desktop screen: no
+// vertical scrollbar, and the search box + info button visible without scrolling. The map
+// switch above them eats into that budget (see `--map-chrome` in the interactive layout),
+// which is the thing most likely to push the panel below the fold.
 const desktops = [
 	{ name: '1280x720 (small laptop)', width: 1280, height: 720 },
 	{ name: '1440x900 (macbook)', width: 1440, height: 900 },
@@ -20,17 +22,21 @@ async function expectFitsOneScreen(page: import('@playwright/test').Page) {
 	await expect(page.getByRole('group').filter({ hasText: 'Sources' })).toBeInViewport();
 }
 
+const maps = ['./interactive/unemployment', './interactive/population'];
+
 for (const size of desktops) {
-	test(`fits one screen at ${size.name}`, async ({ page }) => {
-		await page.setViewportSize({ width: size.width, height: size.height });
-		await page.goto('./interactive');
+	for (const map of maps) {
+		test(`${map.split('/').pop()} fits one screen at ${size.name}`, async ({ page }) => {
+			await page.setViewportSize({ width: size.width, height: size.height });
+			await page.goto(map);
 
-		await expectFitsOneScreen(page);
+			await expectFitsOneScreen(page);
 
-		// The Tampere view adds a region-toggle row above the map and a differently-shaped
-		// panel (no survey row) — check it separately, since switching is a client-side
-		// toggle rather than a full page reload that would already be covered above.
-		await page.getByRole('tab', { name: 'Tampere Metro' }).click();
-		await expectFitsOneScreen(page);
-	});
+			// The Tampere view has a differently-shaped panel (the unemployment map drops its
+			// survey row there) — check it separately, since switching is a client-side toggle
+			// rather than a full page reload that would already be covered above.
+			await page.getByRole('tab', { name: 'Tampere Metro' }).click();
+			await expectFitsOneScreen(page);
+		});
+	}
 }

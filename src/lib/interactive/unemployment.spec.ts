@@ -18,18 +18,19 @@ const px: PxWebExport = {
 		{ code: 'HAKIJALOPUSSA', text: 'Työnhakijoita', type: 'c' },
 		{ code: 'TYOTOSUUS', text: 'Työttömien %-osuus', type: 'c' },
 		{ code: 'TYOTTOMATLOPUSSA', text: 'Työttömät työnhakijat', type: 'c' },
-		{ code: 'TYOVOIMATK', text: 'Työvoima', type: 'c' }
+		{ code: 'TYOVOIMATK', text: 'Työvoima', type: 'c' },
+		{ code: 'AVPAIKATLOPUSSA', text: 'Avoimet työpaikat', type: 'c' }
 	],
 	data: [
-		{ key: ['SSS', '2026M06'], values: ['542318', '12.8', '352001', '2743596'] },
-		{ key: ['KU684', '2026M06'], values: ['1494', '13.1', '529', '18440'] },
-		{ key: ['KU005', '2026M06'], values: ['586', '8.4', '164', '3604'] },
+		{ key: ['SSS', '2026M06'], values: ['542318', '12.8', '352001', '2743596', '68000'] },
+		{ key: ['KU684', '2026M06'], values: ['1494', '13.1', '529', '18440', '212'] },
+		{ key: ['KU005', '2026M06'], values: ['586', '8.4', '164', '3604', '77'] },
 		// Suppressed rate, but the labour force is still published.
-		{ key: ['KU062', '2026M06'], values: ['12', '...', '...', '900'] },
+		{ key: ['KU062', '2026M06'], values: ['12', '...', '...', '900', '4'] },
 		// Region-level rows and the "unknown municipality" bucket share the file.
-		{ key: ['MK01', '2026M06'], values: ['100', '9.9', '50', '1000'] },
-		{ key: ['ELY16', '2026M06'], values: ['1540', '5.2', '421', '15374'] },
-		{ key: ['KUJOU', '2026M06'], values: ['5', '4.0', '2', '80'] }
+		{ key: ['MK01', '2026M06'], values: ['100', '9.9', '50', '1000', '30'] },
+		{ key: ['ELY16', '2026M06'], values: ['1540', '5.2', '421', '15374', '400'] },
+		{ key: ['KUJOU', '2026M06'], values: ['5', '4.0', '2', '80', '1'] }
 	],
 	metadata: [{ source: 'KEHA-keskus, Työnvälitystilasto' }]
 };
@@ -44,7 +45,8 @@ describe('toUnemploymentData', () => {
 			rate: 13.1,
 			labourForce: 18440,
 			jobseekers: 1494,
-			unemployed: 529
+			unemployed: 529,
+			vacancies: 212
 		});
 	});
 
@@ -58,7 +60,8 @@ describe('toUnemploymentData', () => {
 			rate: null,
 			labourForce: 900,
 			jobseekers: 12,
-			unemployed: null
+			unemployed: null,
+			vacancies: 4
 		});
 	});
 
@@ -78,14 +81,27 @@ describe('aggregateKuntaStats', () => {
 	it('sums fields and recomputes the rate from the sums, not by averaging per-kunta rates', () => {
 		// A big and a small kunta with very different rates: averaging the rates (13% and 8%)
 		// would give ~10.5%, but the weighted rate from the sums is what should come out.
-		const big: KuntaStats = { rate: 13.1, labourForce: 18440, jobseekers: 1494, unemployed: 529 };
-		const small: KuntaStats = { rate: 8.4, labourForce: 3604, jobseekers: 586, unemployed: 164 };
+		const big: KuntaStats = {
+			rate: 13.1,
+			labourForce: 18440,
+			jobseekers: 1494,
+			unemployed: 529,
+			vacancies: 212
+		};
+		const small: KuntaStats = {
+			rate: 8.4,
+			labourForce: 3604,
+			jobseekers: 586,
+			unemployed: 164,
+			vacancies: 77
+		};
 
 		expect(aggregateKuntaStats([big, small])).toEqual({
 			rate: ((529 + 164) / (18440 + 3604)) * 100,
 			labourForce: 18440 + 3604,
 			jobseekers: 1494 + 586,
-			unemployed: 529 + 164
+			unemployed: 529 + 164,
+			vacancies: 212 + 77
 		});
 	});
 
@@ -96,9 +112,16 @@ describe('aggregateKuntaStats', () => {
 			rate: null,
 			labourForce: 900,
 			jobseekers: 12,
-			unemployed: null
+			unemployed: null,
+			vacancies: 4
 		};
-		const known: KuntaStats = { rate: 13.1, labourForce: 18440, jobseekers: 1494, unemployed: 529 };
+		const known: KuntaStats = {
+			rate: 13.1,
+			labourForce: 18440,
+			jobseekers: 1494,
+			unemployed: 529,
+			vacancies: 212
+		};
 
 		const result = aggregateKuntaStats([suppressedRate, known]);
 
@@ -114,14 +137,16 @@ describe('aggregateKuntaStats', () => {
 			rate: null,
 			labourForce: null,
 			jobseekers: null,
-			unemployed: null
+			unemployed: null,
+			vacancies: null
 		};
 
 		expect(aggregateKuntaStats([allSuppressed, allSuppressed])).toEqual({
 			rate: null,
 			labourForce: null,
 			jobseekers: null,
-			unemployed: null
+			unemployed: null,
+			vacancies: null
 		});
 	});
 });

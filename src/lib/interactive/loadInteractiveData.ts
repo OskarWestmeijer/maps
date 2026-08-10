@@ -15,7 +15,12 @@ import unemployment from './unemployment_register_kunnat_2026-06_12r5.json';
 import labourSurvey from './unemployment_survey_national_2026-06.csv?raw';
 import softwareJobsExport from './software_occupations_register_kunnat_2026-06_12ti.json';
 import { toFinlandMap, type KuntaCollection } from './finland';
-import { toUnemploymentData, aggregateKuntaStats, type PxWebExport } from './unemployment';
+import {
+	toUnemploymentData,
+	aggregateKuntaStats,
+	EMPTY_KUNTA_STATS,
+	type PxWebExport
+} from './unemployment';
 import { toLabourSurvey } from './survey';
 import { toSoftwareJobsData, aggregateSoftwareJobStats } from './softwareJobs';
 
@@ -59,7 +64,12 @@ export function loadInteractiveData(collection: KuntaCollection, options: LoadOp
 	} = toUnemploymentData(unemployment as PxWebExport, areaPrefix);
 	const softwareJobsData = toSoftwareJobsData(softwareJobsExport as PxWebExport, areaPrefix);
 
-	const { kuntas, viewBox } = toFinlandMap(collection, stats, isSubset ? SUBSET_PADDING_RATIO : 0);
+	const { kuntas, viewBox } = toFinlandMap(
+		collection,
+		stats,
+		EMPTY_KUNTA_STATS,
+		isSubset ? SUBSET_PADDING_RATIO : 0
+	);
 
 	// The register export's `SSS` row is a whole-country total only — there's no equivalent
 	// pre-aggregated row for an arbitrary hand-picked subset, so a subset's totals are rolled

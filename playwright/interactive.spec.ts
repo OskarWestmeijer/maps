@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('map renders every municipality', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const map = page.getByRole('img', { name: 'Unemployment by municipality in Finland' });
 	await expect(map).toBeVisible();
@@ -9,7 +9,7 @@ test('map renders every municipality', async ({ page }) => {
 });
 
 test('hovering a municipality shows its details', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
 
@@ -26,12 +26,14 @@ test('hovering a municipality shows its details', async ({ page }) => {
 	await expect(panel.getByRole('heading', { name: 'Rauma' })).toBeVisible();
 	await expect(panel.getByText('10,7 %')).toBeVisible();
 
-	// Unemployed jobseekers, straight from the source export.
+	// Unemployed jobseekers and open vacancies (all occupations), straight from the source
+	// export — the latter is the register's own AVPAIKATLOPUSSA column, not the software slice.
 	await expect(panel.getByText('1 970', { exact: true })).toBeVisible();
+	await expect(panel.getByText('126', { exact: true })).toBeVisible();
 });
 
 test('searching a municipality highlights it blue on the map', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
 
@@ -60,7 +62,7 @@ test('searching a municipality highlights it blue on the map', async ({ page }) 
 });
 
 test('clicking a municipality on the map selects it too', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
 
@@ -75,7 +77,7 @@ test('clicking a municipality on the map selects it too', async ({ page }) => {
 test('shows software & app development jobs alongside the national and municipal figures', async ({
 	page
 }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
 
@@ -93,7 +95,7 @@ test('shows software & app development jobs alongside the national and municipal
 });
 
 test('the Tampere tab scopes the map, panel, and search to that region only', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
 	const map = page.getByRole('img', { name: 'Unemployment by municipality in Tampere Metro' });
@@ -142,7 +144,7 @@ test('the Tampere tab scopes the map, panel, and search to that region only', as
 });
 
 test('municipalities are colour coded by distance from the national rate', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const fill = (name: string) =>
 		page.getByRole('button', { name: new RegExp(`^${name},`) }).getAttribute('fill');
@@ -161,7 +163,7 @@ test('municipalities are colour coded by distance from the national rate', async
 });
 
 test('the panel states how far a municipality sits from the national rate', async ({ page }) => {
-	await page.goto('./interactive');
+	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
 

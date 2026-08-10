@@ -6,10 +6,16 @@
 
 import type { KuntaStats } from './unemployment';
 
-/** The export also carries `id`, `gml_id`, the Swedish name and area figures; none are used. */
+/**
+ * The export also carries `id`, `gml_id`, the Swedish name and the water/total area figures;
+ * none of those are used. `landarea` (km², the official maa-pinta-ala) is — it's the
+ * denominator behind the population map's density, and it lives in the geometry rather than
+ * in any of the PxWeb exports. The maakunta file doesn't carry it, hence optional.
+ */
 export type KuntaProperties = {
 	natcode: string;
 	namefin: string;
+	landarea?: number;
 };
 
 export type KuntaFeature = {
@@ -26,22 +32,25 @@ export type KuntaCollection = {
 	features: KuntaFeature[];
 };
 
-export type Kunta = KuntaStats & {
+/**
+ * What every area carries regardless of which metric is being mapped. The per-metric
+ * figures are merged in on top of this (see `toFinlandMap`'s `S` parameter) — the
+ * unemployment map's `KuntaStats`, the population map's `PopulationStats`.
+ */
+export type KuntaBase = {
 	name: string;
 	code: string;
+	/** Land area in km², straight from the geometry. Null for maakunnat, whose file omits
+	 *  it — the population loader sums its municipalities' figures instead. */
+	landArea: number | null;
 	/** SVG path data, one path per municipality (all its islands included). */
 	d: string;
 };
 
-const NO_STATS: KuntaStats = {
-	rate: null,
-	labourForce: null,
-	jobseekers: null,
-	unemployed: null
-};
+export type Kunta<S = KuntaStats> = KuntaBase & S;
 
-export type FinlandMap = {
-	kuntas: Kunta[];
+export type FinlandMap<S> = {
+	kuntas: Kunta<S>[];
 	viewBox: string;
 };
 
@@ -68,11 +77,14 @@ function toPathData(coordinates: number[][][][]): string {
  *   irregularity gives visual breathing room — but a bbox tightly fitted to a handful of
  *   contiguous municipalities (e.g. a regional view) would otherwise touch the SVG edge.
  */
-export function toFinlandMap(
+export function toFinlandMap<S>(
 	geojson: KuntaCollection,
-	stats: Map<string, KuntaStats> = new Map(),
+	stats: Map<string, S>,
+	/** Merged into any area the `stats` map has no row for, so every field stays present
+	 *  (and null) rather than missing. */
+	emptyStats: S,
 	paddingRatio = 0
-): FinlandMap {
+): FinlandMap<S> {
 	let minX = Infinity;
 	let maxX = -Infinity;
 	let minY = Infinity;
@@ -97,7 +109,8 @@ export function toFinlandMap(
 			return {
 				name: p.namefin,
 				code: p.natcode,
-				...(stats.get(p.natcode) ?? NO_STATS),
+				landArea: p.landarea ?? null,
+				...(stats.get(p.natcode) ?? emptyStats),
 				d: toPathData(feature.geometry.coordinates)
 			};
 		})
