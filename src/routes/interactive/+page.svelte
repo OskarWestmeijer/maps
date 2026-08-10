@@ -5,11 +5,21 @@
 
 	let { data } = $props();
 
-	// Both regions are in `data` already (computed at build time, see +page.server.ts) — the
-	// toggle just picks which one to render, no navigation or client fetch involved.
-	let region: 'finland' | 'tampere' = $state('finland');
-	const view = $derived(region === 'finland' ? data.finland : data.tampere);
-	const regionLabel = $derived(region === 'finland' ? 'Finland' : TAMPERE_REGION.label);
+	type Region = 'finland' | 'maakunta' | 'tampere';
+
+	// All three tabs are in `data` already (computed at build time, see +page.server.ts) —
+	// switching just picks which one to render, no navigation or client fetch involved.
+	let region = $state<Region>('finland');
+	const view = $derived(
+		region === 'finland' ? data.finland : region === 'maakunta' ? data.maakunta : data.tampere
+	);
+	// The panel's default entity name: Region is the whole country too, just shown at
+	// coarser granularity, so — like Finland — its no-selection state reads "Finland", not
+	// "Region" (that word names the tab/granularity, not an area). Only Tampere Metro is
+	// actually a different, smaller area.
+	const regionLabel = $derived(region === 'tampere' ? TAMPERE_REGION.label : 'Finland');
+	// Vocabulary for the one tab whose shapes aren't municipalities.
+	const areaNoun = $derived(region === 'maakunta' ? 'region' : 'municipality');
 
 	let hovered: Kunta | null = $state(null);
 
@@ -27,7 +37,7 @@
 	// Switching region doesn't remount the page (it's a `$state` toggle, not navigation), so
 	// a selection/search from one region has to be cleared by hand — otherwise it'd persist
 	// pointing at a municipality that doesn't exist in the other view.
-	function switchRegion(next: 'finland' | 'tampere') {
+	function switchRegion(next: Region) {
 		region = next;
 		hovered = null;
 		selectedCode = null;
@@ -52,7 +62,9 @@
 	// percentage points, tinted with the very colour the map used to fill it. It's what makes
 	// the diverging scale readable without a legend — the number explains the colour.
 	// Suppressed when the panel *is* the national figure, which would trivially read "0,0".
-	const isCountryTotal = $derived(!displayed && region === 'finland');
+	// True for both Finland and Region (a coarser view of the same whole country) — only
+	// Tampere Metro's blank state is a genuinely different, smaller area.
+	const isCountryTotal = $derived(!displayed && region !== 'tampere');
 	const deviation = $derived(
 		panelRate !== null && view.countryRate !== null && !isCountryTotal
 			? panelRate - view.countryRate
@@ -147,7 +159,7 @@
 			made the old header feel busy.
 		-->
 		<div class="flex items-center gap-6 border-b border-base-300" role="tablist">
-			{#each [{ id: 'finland', label: 'Finland' }, { id: 'tampere', label: TAMPERE_REGION.label }] as const as tab (tab.id)}
+			{#each [{ id: 'finland', label: 'Finland' }, { id: 'maakunta', label: 'Region' }, { id: 'tampere', label: TAMPERE_REGION.label }] as const as tab (tab.id)}
 				<button
 					type="button"
 					role="tab"
@@ -181,7 +193,7 @@
 				viewBox={view.viewBox}
 				class="h-full w-full"
 				role="img"
-				aria-label={`Unemployment by municipality in ${regionLabel}`}
+				aria-label={`Unemployment by ${areaNoun} in ${regionLabel}`}
 				onclick={(e) => {
 					// Municipality <path> clicks bubble up here too, but by then e.target is the
 					// path, not the svg itself — only a click that lands on the empty sheet
@@ -263,7 +275,7 @@
 						</div>
 						<p>
 							Everyone signed on with the employment service as unemployed, as a share of the labour
-							force. Published per municipality.
+							force. Published per municipality and region.
 						</p>
 						<p class="mt-1 text-base-content/60">{view.source} · {formatPeriod(view.period)}</p>
 					</section>
@@ -276,7 +288,8 @@
 						</div>
 						<p>
 							Tilastokeskus's headline rate, from a monthly sample survey on the ILO definition.
-							National only — no regional breakdown, so it's hidden on the {TAMPERE_REGION.label} view.
+							National only — no per-area breakdown, so it's hidden on the {TAMPERE_REGION.label} view
+							and whenever a {areaNoun} is hovered or selected.
 						</p>
 						<p class="mt-1 text-base-content/60">
 							Tilastokeskus, työvoimatutkimus · {formatPeriod(view.survey.period)}
@@ -320,7 +333,7 @@
 			<div class="join w-full">
 				<input
 					type="text"
-					placeholder="Search municipality…"
+					placeholder={`Search ${areaNoun}…`}
 					class="input join-item w-full border-base-300 bg-base-100 input-sm focus:outline-accent"
 					bind:value={search}
 					oninput={() => (selectedCode = null)}

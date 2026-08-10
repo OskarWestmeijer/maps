@@ -1,7 +1,9 @@
 /**
  * Reads the KEHA-keskus / Työnvälitystilasto municipal export (PxWeb JSON) and pulls out
- * one unemployment figure per municipality, keyed by the same national code (`natcode`)
- * the map GeoJSON carries.
+ * one unemployment figure per area, keyed by the same national code (`natcode`) the map
+ * GeoJSON carries. The export bundles multiple area levels in one file (municipality,
+ * region, sub-region, ELY, whole country); `toUnemploymentData`'s `areaPrefix` picks which
+ * one to key `stats` by.
  *
  * A note on the metric: `TYOTOSUUS` is the share of *registered unemployed jobseekers* in
  * the labour force, which is not the same statistic as Tilastokeskus's headline
@@ -108,7 +110,17 @@ function parseRate(raw: string | undefined): number | null {
 	return Number.isFinite(value) ? value : null;
 }
 
-export function toUnemploymentData(px: PxWebExport): UnemploymentData {
+/**
+ * @param areaPrefix Which rows to key `stats` by: `'KU'` for the 308 municipalities (the
+ *   default), or `'MK'` for the 19 maakunta/region rows the same export carries — used for
+ *   the Region tab, which shows the whole country at region rather than municipality
+ *   granularity. Either way `national` always comes from the single whole-country `SSS`
+ *   row, independent of which area level was requested.
+ */
+export function toUnemploymentData(
+	px: PxWebExport,
+	areaPrefix: 'KU' | 'MK' = 'KU'
+): UnemploymentData {
 	const indexes = columnIndexes(px.columns);
 	const stats = new Map<string, KuntaStats>();
 	let national: KuntaStats = { rate: null, labourForce: null, jobseekers: null, unemployed: null };
@@ -130,14 +142,16 @@ export function toUnemploymentData(px: PxWebExport): UnemploymentData {
 			continue;
 		}
 
-		// The export also carries region-level rows (MK/SK/ELY) and a "kunta unknown"
-		// bucket; only the numeric KU codes line up with the map.
-		if (!area.startsWith('KU')) continue;
+		// The export carries several area levels in one file — KU (municipality), MK
+		// (region), SK (sub-region) and ELY — plus an "area unknown" bucket per level; only
+		// the requested prefix's numeric codes line up with the map being rendered.
+		if (!area.startsWith(areaPrefix)) continue;
 
-		const natcode = area.slice(2);
+		const natcode = area.slice(areaPrefix.length);
 
-		// A municipality is kept even when some figures are suppressed — the labour force
-		// is published for all 308, while four tiny Åland municipalities have no rate.
+		// An area is kept even when some figures are suppressed — the labour force is
+		// published for all of them, while a handful of tiny Åland municipalities have no
+		// rate.
 		if (!/^\d+$/.test(natcode)) continue;
 
 		stats.set(natcode, figures);

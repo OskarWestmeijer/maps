@@ -106,7 +106,14 @@ function addToSum(acc: Accumulator, value: number | null): Accumulator {
 	return { ...acc, total: acc.total + value, knownCount: acc.knownCount + 1 };
 }
 
-export function toSoftwareJobsData(px: PxWebExport): SoftwareJobsData {
+/**
+ * @param areaPrefix Same idea as `toUnemploymentData`'s: `'KU'` (default) keys `stats` by
+ *   municipality, `'MK'` by region — this export carries both area levels too.
+ */
+export function toSoftwareJobsData(
+	px: PxWebExport,
+	areaPrefix: 'KU' | 'MK' = 'KU'
+): SoftwareJobsData {
 	const indexes = columnIndexes(px.columns);
 
 	const emptyAcc = (): Accumulator => ({ total: 0, knownCount: 0, nullCount: 0 });
@@ -153,11 +160,11 @@ export function toSoftwareJobsData(px: PxWebExport): SoftwareJobsData {
 			continue;
 		}
 
-		// Same shape as the register export: region rows (MK/SK/ELY) and a "kunta unknown"
-		// bucket share the file with the numeric KU codes that join the map.
-		if (!area.startsWith('KU')) continue;
+		// Same shape as the register export: several area levels and an "area unknown"
+		// bucket per level share the file with the numeric codes that join the map.
+		if (!area.startsWith(areaPrefix)) continue;
 
-		const natcode = area.slice(2);
+		const natcode = area.slice(areaPrefix.length);
 
 		if (!/^\d+$/.test(natcode)) continue;
 
