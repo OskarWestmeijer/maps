@@ -30,6 +30,21 @@ echo "Start deploy maps script (image tag: $MAPS_IMAGE_TAG)."
 # directory is harmless: nginx falls back to the copy baked into the image.
 mkdir -p data
 
+# Refresh the statistics as part of the deploy, so a new container never starts on data older
+# than the moment it was deployed. Without this, a fresh host would serve whatever vintage was
+# committed when the image was built until the next daily cron run.
+#
+# Deliberately NOT via execute_command: a Statistics Finland outage must not fail a deploy.
+# The script leaves the previous files untouched when it can't validate a response, and nginx
+# falls back to the copy inside the image when the directory is empty, so the worst case here
+# is a deploy that serves slightly older figures — not a broken one.
+echo 'Refreshing statistics before startup.'
+if python3 scripts/fetch_statfi.py --out ./data; then
+    echo 'Statistics refreshed.'
+else
+    echo 'WARNING: statistics refresh failed; continuing with the existing data.' >&2
+fi
+
 # Commands to execute
 compose_down="docker compose -f cprod.yml down"
 compose_pull="docker compose -f cprod.yml pull"
