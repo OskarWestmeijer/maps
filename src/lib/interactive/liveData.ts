@@ -51,12 +51,21 @@ const FILES = {
 	manifest: 'manifest.json'
 } as const;
 
-/** Written by `scripts/fetch_statfi.py` on every run — the only record of when we last asked
- *  Statistics Finland, as opposed to the period the figures describe. Per file, because the
- *  four tables are on independent release cycles. */
+/**
+ * Written by `scripts/fetch_statfi.py` on every run. Per file, because the four tables are on
+ * independent release cycles.
+ *
+ * Three dates, three questions: `period` is what the figures describe ("2026M06"), `updated`
+ * is when Statistics Finland published them, `polled` is when we last asked. Only `polled`
+ * moves on a run that changes nothing, which is what makes a stale `updated` beside a fresh
+ * `polled` readable as "checked today, still June's release".
+ *
+ * Only `polled` is rendered (above the Sources button); the other two are there for anyone
+ * inspecting `/data/manifest.json` directly.
+ */
 type Manifest = {
 	polled?: string;
-	files?: Record<string, { polled?: string; period?: string }>;
+	files?: Record<string, { polled?: string; updated?: string | null; period?: string }>;
 };
 
 const EMPTY_SOFTWARE_JOB_STATS: SoftwareJobStats = {

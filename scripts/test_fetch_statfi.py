@@ -7,7 +7,10 @@ write over good data. The HTTP layer is thin enough to exercise by running the s
 
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from fetch_statfi import (
     TABLES,
@@ -15,7 +18,10 @@ from fetch_statfi import (
     Table,
     _period_from_keys,
     build_query,
+    read_manifest,
+    released_at,
     validate_json,
+    write_if_changed,
 )
 
 
@@ -183,6 +189,100 @@ class PeriodFromKeysTest(unittest.TestCase):
 
     def test_ignores_four_digit_values_outside_any_plausible_year(self):
         self.assertEqual("", _period_from_keys([["KU020", "2513"]]))
+
+
+class ManifestTest(unittest.TestCase):
+    """`--only`, and any run where one table fails, covers a subset of the files."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.path = self.dir / "manifest.json"
+
+    def write(self, files: dict):
+        self.path.write_text(json.dumps({"polled": "2026-08-11T05:00:00Z", "files": files}))
+
+    def test_reads_the_existing_per_file_entries(self):
+        self.write({"a.json": {"polled": "x", "period": "2026M06"}})
+
+        self.assertEqual({"a.json": {"polled": "x", "period": "2026M06"}}, read_manifest(self.path))
+
+    def test_a_partial_run_must_not_drop_the_other_files_entries(self):
+        # The regression this exists for: refreshing one table used to replace the whole
+        # manifest, leaving the maps with no poll date for data that was on disk and current.
+        self.write({"a.json": {"polled": "old", "period": "2026M05"}, "b.json": {"polled": "old"}})
+
+        merged = {**read_manifest(self.path), **{"a.json": {"polled": "new", "period": "2026M06"}}}
+
+        self.assertEqual({"polled": "new", "period": "2026M06"}, merged["a.json"])
+        self.assertEqual({"polled": "old"}, merged["b.json"])
+
+    def test_starts_empty_when_there_is_no_manifest_yet(self):
+        self.assertEqual({}, read_manifest(self.path))
+
+    def test_starts_empty_rather_than_throwing_on_a_corrupt_manifest(self):
+        self.path.write_text("{not json")
+
+        self.assertEqual({}, read_manifest(self.path))
+
+
+class ReleasedAtTest(unittest.TestCase):
+    """`updated` in the manifest: when Statistics Finland published, not when we fetched."""
+
+    def test_normalises_pxwebs_dotted_clock_to_real_iso_8601(self):
+        # PxWeb emits "2026-07-21T05.00.00Z" — dots where ISO-8601 wants colons, which no
+        # date parser on either side of this pipeline accepts.
+        payload = {"metadata": [{"updated": "2026-07-21T05.00.00Z"}]}
+
+        self.assertEqual("2026-07-21T05:00:00Z", released_at(payload))
+
+    def test_leaves_an_already_valid_timestamp_alone(self):
+        payload = {"metadata": [{"updated": "2026-07-21T05:00:00Z"}]}
+
+        self.assertEqual("2026-07-21T05:00:00Z", released_at(payload))
+
+    def test_does_not_touch_the_date_half(self):
+        # Only the clock has dots; the date's hyphens must survive.
+        payload = {"metadata": [{"updated": "2026-05-27T05.00.00Z"}]}
+
+        self.assertEqual("2026-05-27", released_at(payload).split("T")[0])
+
+    def test_returns_none_when_the_export_carries_no_release_date(self):
+        for payload in ({}, {"metadata": []}, {"metadata": [{}]}, {"metadata": [{"updated": 7}]}):
+            self.assertIsNone(released_at(payload), payload)
+
+
+class WriteIfChangedTest(unittest.TestCase):
+    def setUp(self):
+        self.path = Path(tempfile.mkdtemp()) / "export.json"
+
+    def test_reports_a_first_write_as_new(self):
+        self.assertEqual("new", write_if_changed(self.path, b"one", dry_run=False))
+        self.assertEqual(b"one", self.path.read_bytes())
+
+    def test_reports_differing_bytes_as_rewritten(self):
+        write_if_changed(self.path, b"one", dry_run=False)
+
+        self.assertEqual("rewritten", write_if_changed(self.path, b"two", dry_run=False))
+        self.assertEqual(b"two", self.path.read_bytes())
+
+    def test_skips_the_write_entirely_when_the_bytes_match(self):
+        write_if_changed(self.path, b"one", dry_run=False)
+        before = self.path.stat().st_mtime_ns
+
+        self.assertEqual("identical", write_if_changed(self.path, b"one", dry_run=False))
+        # Not rewritten with identical content: the mtime stays meaningful.
+        self.assertEqual(before, self.path.stat().st_mtime_ns)
+
+    def test_a_dry_run_reports_what_would_happen_without_touching_the_file(self):
+        write_if_changed(self.path, b"one", dry_run=False)
+
+        self.assertEqual("rewritten", write_if_changed(self.path, b"two", dry_run=True))
+        self.assertEqual(b"one", self.path.read_bytes())
+
+    def test_leaves_no_temporary_file_behind(self):
+        write_if_changed(self.path, b"one", dry_run=False)
+
+        self.assertEqual(["export.json"], [p.name for p in self.path.parent.iterdir()])
 
 
 if __name__ == "__main__":

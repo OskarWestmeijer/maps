@@ -3,7 +3,6 @@ import register from '../../../static/data/unemployment_register_kunnat_12r5.jso
 import software from '../../../static/data/software_occupations_register_kunnat_12ti.json';
 import survey from '../../../static/data/unemployment_survey_national_135z.json';
 import population from '../../../static/data/population_register_kunnat_121w.json';
-import manifest from '../../../static/data/manifest.json';
 import {
 	emptyPopulationViews,
 	emptyUnemploymentViews,
@@ -24,6 +23,32 @@ import type { PopulationStats } from './population';
  * per-parser specs next door cover the parsing in isolation; what's tested here is everything
  * that used to happen in the two build-time loaders.
  */
+/**
+ * Written by `scripts/fetch_statfi.py` on every run, so it isn't committed — its poll
+ * timestamp would churn on every local run. Synthesized here rather than imported, so a fresh
+ * clone can run the tests without fetching anything first.
+ */
+const manifest = {
+	polled: '2026-08-11T18:39:44Z',
+	files: {
+		'unemployment_register_kunnat_12r5.json': {
+			period: '2026M06',
+			updated: '2026-07-21T05:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
+		},
+		'software_occupations_register_kunnat_12ti.json': {
+			period: '2026M06',
+			updated: '2026-07-21T05:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
+		},
+		'population_register_kunnat_121w.json': {
+			period: '2025',
+			updated: '2026-05-27T05:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
+		}
+	}
+};
+
 const DATA_DIR: Record<string, unknown> = {
 	'unemployment_register_kunnat_12r5.json': register,
 	'software_occupations_register_kunnat_12ti.json': software,
@@ -154,11 +179,32 @@ describe('loadUnemploymentViews', () => {
 		expect(views.finland.survey.rate).toBe(10.5);
 	});
 
-	it('reads the poll date out of the manifest', async () => {
+	it('reads each file its own poll date out of the manifest', async () => {
+		// Per file, because the tables are on independent release cycles — 12r5 and 12ti can
+		// legitimately have been polled at different times.
 		const views = await loadUnemploymentViews(unemploymentGeometry);
 
-		expect(views.finland.polled).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-		expect(views.finland.softwareJobs.polled).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+		expect(views.finland.polled).toBe('2026-08-11T18:39:44Z');
+		expect(views.finland.softwareJobs.polled).toBe('2026-08-11T18:39:44Z');
+	});
+
+	it('falls back to the run-level poll date for a file with no entry of its own', async () => {
+		// The fixture manifest has no `files` entry for the survey export, which is what a
+		// manifest written before that table was added would look like.
+		const views = await loadUnemploymentViews(unemploymentGeometry);
+
+		expect(views.finland.polled).toBe(manifest.polled);
+	});
+
+	it('leaves the poll date null when there is no manifest at all', async () => {
+		// The normal state of a fresh clone: the file is generated, so it isn't committed.
+		install({ 'manifest.json': new Response('', { status: 404 }) });
+
+		const views = await loadUnemploymentViews(unemploymentGeometry);
+
+		expect(views.finland.polled).toBeNull();
+		// ...and the figures are unaffected: the manifest carries no data of its own.
+		expect(views.finland.national.rate).toBe(12.8);
 	});
 
 	it('degrades one file at a time: a missing 12ti still leaves a coloured map', async () => {

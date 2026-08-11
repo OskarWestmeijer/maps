@@ -281,6 +281,23 @@ def validate_json(table: Table, payload: dict) -> str:
     return _period_from_keys(keys)
 
 
+def released_at(payload: dict) -> str | None:
+    """When Statistics Finland published this release, from the export's own metadata.
+
+    Normalised from PxWeb's odd `2026-07-21T05.00.00Z` (dots, not colons) to real ISO-8601,
+    so the manifest is parseable by anything that reads it.
+    """
+
+    raw = (payload.get("metadata") or [{}])[0].get("updated")
+
+    if not isinstance(raw, str) or "T" not in raw:
+        return None
+
+    date, _, clock = raw.partition("T")
+
+    return f"{date}T{clock.replace('.', ':')}"
+
+
 def _is_month(part: str) -> bool:
     return len(part) == 7 and part[4] in "MQ" and part[:4].isdigit() and part[5:].isdigit()
 
@@ -311,19 +328,53 @@ def _period_from_keys(keys: list[list[str]]) -> str:
 # --------------------------------------------------------------------------- output
 
 
-def write_if_changed(path: Path, content: bytes, dry_run: bool) -> bool:
-    """Atomic replace, skipped when the bytes already match. Returns whether it changed."""
+def write_if_changed(path: Path, content: bytes, dry_run: bool) -> str:
+    """Write the file, unless the bytes on disk are already identical.
 
-    unchanged = path.exists() and path.read_bytes() == content
+    Skipping an identical write is what keeps the file's mtime meaningful and keeps `git diff`
+    empty on a run that fetched the same figures again.
 
-    if unchanged or dry_run:
-        return not unchanged
+    Returns what happened, for the summary: "new", "rewritten", "identical" — or, under
+    --dry-run, what *would* have happened.
+    """
+
+    if not path.exists():
+        outcome = "new"
+    elif path.read_bytes() == content:
+        outcome = "identical"
+    else:
+        outcome = "rewritten"
+
+    if dry_run or outcome == "identical":
+        return outcome
 
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(content)
     os.replace(temporary, path)
 
-    return True
+    return outcome
+
+
+# What each outcome means in the summary, spelled out — the distinction that matters is
+# whether the file on disk was touched, not whether the figures happened to differ.
+OUTCOMES = {
+    "new": "written (no local copy existed)",
+    "rewritten": "written (the figures differ from the local copy)",
+    "identical": "left alone (byte-identical to the local copy — nothing to write)",
+}
+
+
+def read_manifest(path: Path) -> dict[str, dict]:
+    """The existing per-file entries, or empty if there is no readable manifest yet."""
+
+    try:
+        existing = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    files = existing.get("files")
+
+    return files if isinstance(files, dict) else {}
 
 
 def fetch_table(table: Table, out: Path, dry_run: bool, verbose: bool) -> dict:
@@ -350,9 +401,14 @@ def fetch_table(table: Table, out: Path, dry_run: bool, verbose: bool) -> dict:
         raise FetchError(f"{table.name}: response is not valid JSON ({error})") from error
 
     period = validate_json(table, payload)
-    changed = write_if_changed(out / table.filename, raw, dry_run)
+    outcome = write_if_changed(out / table.filename, raw, dry_run)
 
-    return {"period": period, "changed": changed, "bytes": len(raw)}
+    return {
+        "period": period,
+        "updated": released_at(payload),
+        "outcome": outcome,
+        "bytes": len(raw)
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -380,7 +436,10 @@ def main(argv: list[str] | None = None) -> int:
         out.mkdir(parents=True, exist_ok=True)
 
     polled = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # What the per-file entries are merged into at the end, so a partial run keeps the rest.
+    previous = read_manifest(out / MANIFEST_FILENAME)
     results: dict[str, dict] = {}
+    outcomes: dict[str, str] = {}
     failures: list[str] = []
 
     for index, table in enumerate(tables):
@@ -396,17 +455,54 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(table.name)
             continue
 
-        state = "changed" if result["changed"] else "unchanged"
-        print(f"  {table.filename} — period {result['period']}, {result['bytes']} bytes, {state}")
-        results[table.filename] = {"polled": polled, "period": result["period"]}
+        verb = "would be " if args.dry_run else ""
+        print(f"  period {result['period']} · {result['bytes']} bytes")
+        print(f"  {out / table.filename}")
+        print(f"  -> {verb}{OUTCOMES[result['outcome']]}")
+        outcomes[table.filename] = result["outcome"]
+        # Three dates, three different questions: `period` is what the figures describe,
+        # `updated` is when Statistics Finland published them, `polled` is when we last
+        # checked. Only the last moves on a run that changes nothing — which is what makes a
+        # stale `updated` next to a fresh `polled` readable as "checked today, still June's
+        # release", the thing the console's "left alone" only says in passing.
+        #
+        # `updated` is read from the export's own metadata rather than recorded when we happen
+        # to write the file: it's exact, identical on every machine, and has no unknown case
+        # for a file that was on disk before this manifest existed.
+        results[table.filename] = {
+            "period": result["period"],
+            "updated": result["updated"],
+            "polled": polled
+        }
 
     # The manifest carries per-file entries rather than one timestamp because the four tables
     # are on independent release cycles, and a partially-failed run must not claim all four are
-    # fresh. A file skipped as unchanged still counts as polled — we did check it.
+    # fresh. A file left alone still counts as polled — we did check it, and that check is the
+    # only evidence the pipeline is alive, so this file is rewritten on every successful run.
+    #
+    # Merged into whatever is already there, never replacing it: --only, or a run where one
+    # table failed, covers a subset of the files, and overwriting would silently drop the
+    # entries for the others — leaving the maps with no poll date for data that is on disk and
+    # perfectly current.
     if results and not args.dry_run:
-        manifest = json.dumps({"polled": polled, "files": results}, indent=2, ensure_ascii=False) + "\n"
+        merged = {**previous, **results}
+        manifest = json.dumps({"polled": polled, "files": merged}, indent=2, ensure_ascii=False) + "\n"
         write_if_changed(out / MANIFEST_FILENAME, manifest.encode("utf-8"), False)
-        print(f"{MANIFEST_FILENAME} — polled {polled}")
+        print(f"\n{out / MANIFEST_FILENAME}")
+        print(f"  -> written, polled {polled} (this one changes on every run)")
+
+        for filename, entry in results.items():
+            print(
+                f"     {filename}: period {entry['period']}, "
+                f"released {entry['updated'] or 'unknown'}"
+            )
+
+    written = [name for name, outcome in outcomes.items() if outcome != "identical"]
+    print(
+        f"\nSummary: {len(outcomes)} table(s) fetched and validated, "
+        f"{len(written)} file(s) {'would be ' if args.dry_run else ''}written"
+        + (f": {', '.join(written)}" if written else " — every file already up to date")
+    )
 
     if failures:
         print(f"\n{len(failures)} table(s) failed: {', '.join(failures)}", file=sys.stderr)
