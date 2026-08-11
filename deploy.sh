@@ -23,6 +23,13 @@ export MAPS_IMAGE_TAG="$image_tag"
 # Start deploy maps script
 echo "Start deploy maps script (image tag: $MAPS_IMAGE_TAG)."
 
+# The refreshed statistics cprod.yml bind-mounts (see .github/workflows/refresh-data.yml).
+# Created here, as the deploying user, because Docker would otherwise create the missing
+# bind-mount source itself and own it as root — after which the refresh script, running over
+# SSH as this same unprivileged user, could no longer write into it. An empty or absent
+# directory is harmless: nginx falls back to the copy baked into the image.
+mkdir -p data
+
 # Commands to execute
 compose_down="docker compose -f cprod.yml down"
 compose_pull="docker compose -f cprod.yml pull"

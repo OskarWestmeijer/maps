@@ -11,6 +11,11 @@ export type RegionId = 'finland' | 'maakunta' | 'tampere';
 export type ShellView<A> = {
 	areas: A[];
 	viewBox: string;
-	/** Statistics period, e.g. "2026M06" — rendered as "Data from June 2026". */
+	/** Statistics period, e.g. "2026M06" — rendered as "Data from June 2026". Empty until the
+	 *  live figures land, which is what blanks the whole line. */
 	period: string;
+	/** When the refresh cron last asked Statistics Finland for this file (ISO, UTC) — a
+	 *  different thing from the period, and the only signal that the pipeline is still
+	 *  running. Null when there's no manifest to read it from. */
+	polled?: string | null;
 };

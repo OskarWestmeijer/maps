@@ -60,6 +60,24 @@ npm install
 npm run dev
 ```
 
+## Update the map data
+
+The interactive maps read their figures from Statistics Finland's PxWeb API. Fetch the latest
+release with (Python 3, standard library only — no venv, no pip):
+
+```bash
+# see what would change, without writing anything
+python3 scripts/fetch_statfi.py --dry-run --verbose
+
+# refresh the committed copy in static/data
+python3 scripts/fetch_statfi.py
+```
+
+The script validates every response before writing, and leaves the previous files untouched if
+anything is missing or malformed. In production the same script runs daily over SSH
+(`.github/workflows/refresh-data.yml`) and writes to a directory nginx serves — the maps fetch
+these files at page load, so new figures go live without a rebuild or a redeploy.
+
 ## Update dependencies
 
 Use ncu to update the dependencies. `npm install -g npm-check-updates`

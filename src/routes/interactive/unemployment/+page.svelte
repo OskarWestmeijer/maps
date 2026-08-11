@@ -1,37 +1,59 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import MapShell from '$lib/interactive/MapShell.svelte';
 	import StatRow from '$lib/interactive/StatRow.svelte';
 	import type { Kunta } from '$lib/interactive/finland';
 	import { colorFor } from '$lib/interactive/unemployment';
 	import { TAMPERE_REGION } from '$lib/interactive/regions';
-	import { count, formatPeriod, percent } from '$lib/interactive/format';
+	import { count, formatDate, formatPeriod, percent, sourceLine } from '$lib/interactive/format';
+	import {
+		emptyUnemploymentViews,
+		loadUnemploymentViews,
+		type UnemploymentViews
+	} from '$lib/interactive/liveData';
 	import type { RegionId } from '$lib/interactive/views';
 
 	let { data } = $props();
 
-	// All three tabs are in `data` already (computed at build time, see +page.server.ts) —
-	// switching just picks which one to render, no navigation or client fetch involved. The
-	// shell drives the tabs; this page keeps `region` so its panel can read the matching
-	// payload (survey row, software-jobs figures) for the active one.
+	// `data` is geometry only (built once, see +page.server.ts); the figures are fetched from
+	// /data/ on mount, so the refresh cron can update them without a rebuild. Until they land,
+	// `views` holds the same shapes with every figure null — which the map already renders as
+	// its no-data hatch and the panel as em dashes, so no separate loading state is needed.
+	let loaded = $state<UnemploymentViews | null>(null);
+	const views = $derived(loaded ?? emptyUnemploymentViews(data));
+	let failed = $state(false);
+
+	onMount(async () => {
+		loaded = await loadUnemploymentViews(data);
+		// A period only ever comes from the register file, so an empty one means it didn't load.
+		failed = loaded.finland.period === '';
+	});
+
+	// All three tabs are in `views` at once — switching just picks which one to render, no
+	// navigation and no second fetch. The shell drives the tabs; this page keeps `region` so
+	// its panel can read the matching payload (survey row, software-jobs figures).
 	let region = $state<RegionId>('finland');
 	const view = $derived(
-		region === 'finland' ? data.finland : region === 'maakunta' ? data.maakunta : data.tampere
+		region === 'finland' ? views.finland : region === 'maakunta' ? views.maakunta : views.tampere
 	);
 	const shellViews = $derived({
 		finland: {
-			areas: data.finland.kuntas,
-			viewBox: data.finland.viewBox,
-			period: data.finland.period
+			areas: views.finland.kuntas,
+			viewBox: views.finland.viewBox,
+			period: views.finland.period,
+			polled: views.finland.polled
 		},
 		maakunta: {
-			areas: data.maakunta.kuntas,
-			viewBox: data.maakunta.viewBox,
-			period: data.maakunta.period
+			areas: views.maakunta.kuntas,
+			viewBox: views.maakunta.viewBox,
+			period: views.maakunta.period,
+			polled: views.maakunta.polled
 		},
 		tampere: {
-			areas: data.tampere.kuntas,
-			viewBox: data.tampere.viewBox,
-			period: data.tampere.period
+			areas: views.tampere.kuntas,
+			viewBox: views.tampere.viewBox,
+			period: views.tampere.period,
+			polled: views.tampere.polled
 		}
 	});
 
@@ -78,6 +100,14 @@
 				: null}
 
 		<h2 class="display-wide text-xl font-bold">{panelName}</h2>
+
+		{#if failed}
+			<!-- The figures live in /data/, so they can be missing while the page itself is fine.
+			     Say so, rather than leaving a map of em dashes to be read as real data. -->
+			<p class="mt-2 text-xs" style:color="var(--ink-faint)">
+				Live figures unavailable — the statistics couldn't be loaded.
+			</p>
+		{/if}
 
 		<p class="stat-label mt-4">Unemployment rate</p>
 		<p class="display-wide mt-0.5 text-5xl leading-none font-bold">{percent(panelRate)}</p>
@@ -149,7 +179,13 @@
 				force. Published per municipality and region, alongside the open vacancies registered with
 				the service on the same reference day (all occupations).
 			</p>
-			<p class="mt-1 text-base-content/60">{view.source} · {formatPeriod(view.period)}</p>
+			<p class="mt-1 text-base-content/60">
+				{sourceLine(
+					view.source,
+					view.period && formatPeriod(view.period),
+					view.polled && `polled ${formatDate(view.polled)}`
+				)}
+			</p>
 		</section>
 
 		<section class="mt-3 border-t border-base-300 pt-3">
@@ -164,7 +200,10 @@
 				{areaNoun} is hovered or selected.
 			</p>
 			<p class="mt-1 text-base-content/60">
-				Tilastokeskus, työvoimatutkimus · {formatPeriod(view.survey.period)}
+				{sourceLine(
+					'Tilastokeskus, työvoimatutkimus',
+					view.survey.period && formatPeriod(view.survey.period)
+				)}
 			</p>
 		</section>
 
@@ -179,8 +218,13 @@
 				programmers, and other software &amp; app developers and analysts (occupation codes 2513,
 				2514, 2519), summed. Not used to colour the map.
 			</p>
+			<!-- Its own period and poll date: 12ti is a separate file on a separate cycle. -->
 			<p class="mt-1 text-base-content/60">
-				KEHA-keskus, Työnvälitystilasto (PxWeb 12ti) · {formatPeriod(view.softwareJobs.period)}
+				{sourceLine(
+					'KEHA-keskus, Työnvälitystilasto (PxWeb 12ti)',
+					view.softwareJobs.period && formatPeriod(view.softwareJobs.period),
+					view.softwareJobs.polled && `polled ${formatDate(view.softwareJobs.polled)}`
+				)}
 			</p>
 		</section>
 

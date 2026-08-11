@@ -116,7 +116,7 @@ function columnIndexes(columns: PxWebExport['columns']): Record<keyof KuntaStats
 }
 
 /** PxWeb marks suppressed/unavailable figures with "..." or an empty string. */
-function parseRate(raw: string | undefined): number | null {
+export function parseFigure(raw: string | undefined): number | null {
 	if (!raw) return null;
 
 	const value = Number(raw.replace(',', '.'));
@@ -143,11 +143,11 @@ export function toUnemploymentData(
 	for (const row of px.data) {
 		const [area, timePeriod] = row.key;
 		const figures: KuntaStats = {
-			rate: parseRate(row.values[indexes.rate]),
-			labourForce: parseRate(row.values[indexes.labourForce]),
-			jobseekers: parseRate(row.values[indexes.jobseekers]),
-			unemployed: parseRate(row.values[indexes.unemployed]),
-			vacancies: parseRate(row.values[indexes.vacancies])
+			rate: parseFigure(row.values[indexes.rate]),
+			labourForce: parseFigure(row.values[indexes.labourForce]),
+			jobseekers: parseFigure(row.values[indexes.jobseekers]),
+			unemployed: parseFigure(row.values[indexes.unemployed]),
+			vacancies: parseFigure(row.values[indexes.vacancies])
 		};
 
 		if (timePeriod) period = timePeriod;

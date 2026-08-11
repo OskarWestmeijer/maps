@@ -11,6 +11,11 @@ const desktops = [
 ];
 
 async function expectFitsOneScreen(page: import('@playwright/test').Page) {
+	// Measure only once the figures have arrived from /data/. A panel full of em dashes is
+	// shorter than one full of numbers, so measuring mid-fetch would let real overflow past.
+	// The period line is blank until the register file lands, which makes it the signal.
+	await expect(page.getByText(/^Data from /)).toBeVisible();
+
 	const overflow = await page.evaluate(
 		() => document.documentElement.scrollHeight - window.innerHeight
 	);

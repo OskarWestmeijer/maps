@@ -1,0 +1,40 @@
+name: Refresh statistics
+
+# Pulls the latest figures from Statistics Finland's PxWeb API straight onto the production
+# host. No image build and no redeploy: the interactive maps fetch these files at page load
+# (see src/lib/interactive/liveData.ts) and nginx serves the mounted directory in preference
+# to the copy baked into the image, so the next visitor sees the new numbers.
+#
+# The script validates every response before writing and exits non-zero without touching the
+# existing files if anything looks wrong — so a bad upstream release fails this workflow
+# loudly rather than blanking the maps.
+
+on:
+  schedule:
+    # Daily at lunch time, Helsinki. GitHub cron is UTC and has no notion of DST, so a single
+    # expression can't be noon all year: 09:30 UTC is 12:30 EEST in summer and 11:30 EET in
+    # winter, which straddles lunch either way. Comfortably after Statistics Finland's usual
+    # 05:00 UTC release slot, so a release lands the same day.
+    #
+    # The tables are monthly and annual, so most runs will report "unchanged" — that is the
+    # point: it also refreshes the poll date the maps display.
+    - cron: '30 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment: oskar-westmeijer-environment
+    steps:
+      - name: Fetch the latest exports onto the host
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            cd /deployments/maps
+            git pull
+            mkdir -p data
+            python3 scripts/fetch_statfi.py --out ./data

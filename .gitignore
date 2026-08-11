@@ -3,6 +3,10 @@ test-results
 playwright-report
 node_modules
 
+# Statistics written by scripts/fetch_statfi.py on the production host, mounted into nginx.
+# The committed copy of the same files lives in static/data.
+/data
+
 # Output
 .output
 .vercel

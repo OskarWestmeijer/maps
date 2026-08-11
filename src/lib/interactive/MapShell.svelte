@@ -21,7 +21,7 @@
 	import type { Snippet } from 'svelte';
 	import { MAP_SURFACE, NO_DATA_COLOR } from './unemployment';
 	import { TAMPERE_REGION } from './regions';
-	import { formatPeriod } from './format';
+	import { formatDate, formatPeriod, sourceLine } from './format';
 	import type { RegionId, ShellView } from './views';
 
 	let {
@@ -218,9 +218,18 @@
 		</div>
 
 		<div class="flex items-center justify-end gap-3 text-xs" style:color="var(--ink-muted)">
-			<!-- Kept out of the panel so the period stays visible while hovering an area. -->
+			<!--
+				Kept out of the panel so the period stays visible while hovering an area. Two
+				different dates, and the labels have to keep them apart: the period is what the
+				figures describe, "polled" is when the refresh cron last fetched them. Both are
+				absent until the live figures land, which blanks the line rather than leaving a
+				placeholder behind.
+			-->
 			<span class="stat-label">
-				Data from {formatPeriod(view.period)}
+				{sourceLine(
+					view.period && `Data from ${formatPeriod(view.period)}`,
+					view.polled && `polled ${formatDate(view.polled)}`
+				)}
 			</span>
 
 			<!-- `details` carries the open/close state and keyboard support without any JS. -->

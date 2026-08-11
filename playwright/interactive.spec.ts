@@ -146,20 +146,26 @@ test('the Tampere tab scopes the map, panel, and search to that region only', as
 test('municipalities are colour coded by distance from the national rate', async ({ page }) => {
 	await page.goto('./interactive/unemployment');
 
-	const fill = (name: string) =>
-		page.getByRole('button', { name: new RegExp(`^${name},`) }).getAttribute('fill');
+	// `toHaveAttribute` rather than a bare `getAttribute`: the figures are fetched from /data/
+	// after the page loads, so before they land every area is hatched. A one-shot read here
+	// races that and sees `url(#no-data)`.
+	const expectFill = (name: string, fill: string) =>
+		expect(page.getByRole('button', { name: new RegExp(`^${name},`) })).toHaveAttribute(
+			'fill',
+			fill
+		);
 
 	// The scale diverges around the country's 12,8 %. Luoto (2,5 %) is 10 points under and
 	// Outokumpu (19,1 %) 6 points over, so they take the extreme green and red.
-	expect(await fill('Luoto')).toBe('#1d6835');
-	expect(await fill('Outokumpu')).toBe('#9a2929');
+	await expectFill('Luoto', '#1d6835');
+	await expectFill('Outokumpu', '#9a2929');
 
 	// Nokia happens to sit exactly on the national rate, which is the whole point of the
 	// midpoint class: it reads as neutral grey rather than as "low".
-	expect(await fill('Nokia')).toBe('#c5cbd2');
+	await expectFill('Nokia', '#c5cbd2');
 
 	// Sottunga's figure is suppressed, so it's hatched rather than given another flat grey.
-	expect(await fill('Sottunga')).toBe('url(#no-data)');
+	await expectFill('Sottunga', 'url(#no-data)');
 });
 
 test('the panel states how far a municipality sits from the national rate', async ({ page }) => {

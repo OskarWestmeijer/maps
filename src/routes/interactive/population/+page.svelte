@@ -1,35 +1,63 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import MapShell from '$lib/interactive/MapShell.svelte';
 	import StatRow from '$lib/interactive/StatRow.svelte';
 	import { changeColorFor, changeLabelFor, inkOnChange } from '$lib/interactive/population';
-	import type { PopulationArea } from '$lib/interactive/loadPopulationViews';
-	import { count, decimal, formatPeriod, signed } from '$lib/interactive/format';
+	import {
+		emptyPopulationViews,
+		loadPopulationViews,
+		type PopulationArea,
+		type PopulationViews
+	} from '$lib/interactive/liveData';
+	import {
+		count,
+		decimal,
+		formatDate,
+		formatPeriod,
+		signed,
+		sourceLine
+	} from '$lib/interactive/format';
 	import type { RegionId } from '$lib/interactive/views';
 
 	let { data } = $props();
 
-	// All three tabs ship in one payload (built at build time, see +page.server.ts); the tabs
-	// switch client-side. `region` lives here rather than only in the shell so the panel can
-	// read the matching view's totals.
+	// `data` is geometry only (built once, see +page.server.ts); the figures are fetched from
+	// /data/ on mount, so the refresh cron can update them without a rebuild. Until they land,
+	// every figure is null — which the map already renders as its no-data hatch.
+	let loaded = $state<PopulationViews | null>(null);
+	const views = $derived(loaded ?? emptyPopulationViews(data));
+	let failed = $state(false);
+
+	onMount(async () => {
+		loaded = await loadPopulationViews(data);
+		// A period only ever comes from the export, so an empty one means it didn't load.
+		failed = loaded.finland.period === '';
+	});
+
+	// All three tabs are in `views` at once; switching picks which one to render. `region`
+	// lives here rather than only in the shell so the panel can read the matching totals.
 	let region = $state<RegionId>('finland');
 	const view = $derived(
-		region === 'finland' ? data.finland : region === 'maakunta' ? data.maakunta : data.tampere
+		region === 'finland' ? views.finland : region === 'maakunta' ? views.maakunta : views.tampere
 	);
 	const shellViews = $derived({
 		finland: {
-			areas: data.finland.areas,
-			viewBox: data.finland.viewBox,
-			period: data.finland.period
+			areas: views.finland.areas,
+			viewBox: views.finland.viewBox,
+			period: views.finland.period,
+			polled: views.finland.polled
 		},
 		maakunta: {
-			areas: data.maakunta.areas,
-			viewBox: data.maakunta.viewBox,
-			period: data.maakunta.period
+			areas: views.maakunta.areas,
+			viewBox: views.maakunta.viewBox,
+			period: views.maakunta.period,
+			polled: views.maakunta.polled
 		},
 		tampere: {
-			areas: data.tampere.areas,
-			viewBox: data.tampere.viewBox,
-			period: data.tampere.period
+			areas: views.tampere.areas,
+			viewBox: views.tampere.viewBox,
+			period: views.tampere.period,
+			polled: views.tampere.polled
 		}
 	});
 
@@ -79,6 +107,14 @@
 			area.change !== null && view.countryChange !== null ? area.change - view.countryChange : null}
 
 		<h2 class="display-wide text-xl font-bold">{area.name}</h2>
+
+		{#if failed}
+			<!-- The figures live in /data/, so they can be missing while the page itself is fine.
+			     Say so, rather than leaving a map of em dashes to be read as real data. -->
+			<p class="mt-2 text-xs" style:color="var(--ink-faint)">
+				Live figures unavailable — the statistics couldn't be loaded.
+			</p>
+		{/if}
 
 		<p class="stat-label mt-4">Population change</p>
 		<p class="display-wide mt-0.5 text-5xl leading-none font-bold">
@@ -150,7 +186,11 @@
 				<em>land</em>, so a {areaNoun} isn't diluted by the lakes and sea inside its boundary.
 			</p>
 			<p class="mt-1 text-base-content/60">
-				{view.source} (PxWeb 121w) · {formatPeriod(view.period)}
+				{sourceLine(
+					view.source && `${view.source} (PxWeb 121w)`,
+					view.period && formatPeriod(view.period),
+					view.polled && `polled ${formatDate(view.polled)}`
+				)}
 			</p>
 		</section>
 

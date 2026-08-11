@@ -34,6 +34,37 @@ export function signed(value: number | null): string {
 	return `${value > 0 ? '+' : value < 0 ? '−' : ''}${count(Math.abs(value))}`;
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * "2026-08-11T05:31:04Z" -> "11 Aug 2026". Empty for anything unparseable, so a malformed or
+ * missing manifest drops the date rather than rendering "Invalid Date".
+ *
+ * Hand-rolled like everything else here, and deliberately reading the string rather than
+ * constructing a `Date`: the timestamp is a UTC instant, and a local-timezone `Date` would
+ * shift it across a day boundary for anyone west of Greenwich.
+ */
+export function formatDate(iso: string | null | undefined): string {
+	const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '');
+
+	if (!match) return '';
+
+	const month = MONTHS[Number(match[2]) - 1];
+
+	if (!month) return '';
+
+	return `${Number(match[3])} ${month} ${match[1]}`;
+}
+
+/**
+ * Joins the provenance fragments under a Sources section — publisher, period, poll date —
+ * skipping whichever aren't known yet. Before the live figures land, only the ones that come
+ * from the page itself are present, and the separators must not be left dangling.
+ */
+export function sourceLine(...parts: (string | null | undefined)[]): string {
+	return parts.filter((part) => part).join(' · ');
+}
+
 /** "2026M06" -> "June 2026" */
 export function formatPeriod(period: string): string {
 	const match = /^(\d{4})M(\d{2})$/.exec(period);

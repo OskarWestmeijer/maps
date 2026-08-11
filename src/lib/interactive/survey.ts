@@ -1,5 +1,5 @@
 /**
- * Reads Tilastokeskus's Labour Force Survey (työvoimatutkimus) key-figures CSV — table
+ * Reads Tilastokeskus's Labour Force Survey (työvoimatutkimus) key-figures export — table
  * 135z, the source behind the työttömyysaste that stat.fi puts on its front page.
  *
  * This is the well-known headline rate, but it is a ~12 000-person sample survey and has
@@ -8,6 +8,8 @@
  * published per kunta. Showing both, clearly labelled, is the point: they differ by a
  * couple of points and readers otherwise assume the map is wrong.
  */
+
+import { parseFigure, type PxWebExport } from './unemployment';
 
 export type LabourSurvey = {
 	/** Trend series — the figure stat.fi advertises as *the* työttömyysaste. */
@@ -18,43 +20,37 @@ export type LabourSurvey = {
 	period: string;
 };
 
-const PERIOD_COLUMN = 'Kuukausi';
-const TREND_COLUMN = 'Työttömyysaste, %, trendi';
-const ORIGINAL_COLUMN = 'Työttömyysaste, %';
+export const EMPTY_LABOUR_SURVEY: LabourSurvey = { rate: null, rateOriginal: null, period: '' };
 
-/** The export uses `;` separators and quotes text fields; numbers may use `,` or `.`. */
-function cells(line: string): string[] {
-	return line.split(';').map((cell) => cell.trim().replace(/^"|"$/g, ''));
-}
+/**
+ * Looked up by column *code*, not by the Finnish display text: the texts are
+ * "Työttömyysaste, %" and "Työttömyysaste, %, trendi", where the first is a strict prefix of
+ * the second, so any loose match silently returns the wrong series. The codes have no such
+ * overlap.
+ */
+const COLUMNS = {
+	rate: 'tyottaste_trendi',
+	rateOriginal: 'tyti-Tyottomyysaste'
+} as const;
 
-function parseRate(raw: string | undefined): number | null {
-	if (!raw) return null;
+export function toLabourSurvey(px: PxWebExport): LabourSurvey {
+	// Same PxWeb quirk as everywhere else: a row's `values` holds only the content columns,
+	// so indexes resolve against that filtered list rather than against `columns`.
+	const content = px.columns.filter((column) => column.type === 'c');
+	const row = px.data[0];
 
-	const value = Number(raw.replace(',', '.'));
+	if (!row) throw new Error('No data row in labour survey export');
 
-	return Number.isFinite(value) ? value : null;
-}
+	const valueOf = (code: string) => {
+		const index = content.findIndex((column) => column.code === code);
 
-export function toLabourSurvey(csv: string): LabourSurvey {
-	// The file opens with a free-text title line and a blank line before the header, so
-	// the header is found by content rather than by line number.
-	const lines = csv.split(/\r?\n/).filter((line) => line.trim() !== '');
-	const headerIndex = lines.findIndex((line) => cells(line)[0] === PERIOD_COLUMN);
-
-	if (headerIndex === -1) throw new Error('No header row in labour survey CSV');
-
-	const header = cells(lines[headerIndex]);
-	const row = cells(lines[headerIndex + 1] ?? '');
-
-	const valueOf = (column: string) => {
-		const index = header.indexOf(column);
-
-		return index === -1 ? null : parseRate(row[index]);
+		return index === -1 ? null : parseFigure(row.values[index]);
 	};
 
+	// The only key column is the month, so the period is the whole key.
 	return {
-		rate: valueOf(TREND_COLUMN),
-		rateOriginal: valueOf(ORIGINAL_COLUMN),
-		period: row[header.indexOf(PERIOD_COLUMN)] ?? ''
+		rate: valueOf(COLUMNS.rate),
+		rateOriginal: valueOf(COLUMNS.rateOriginal),
+		period: row.key[0] ?? ''
 	};
 }

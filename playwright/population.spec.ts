@@ -73,15 +73,21 @@ test('hovering a municipality shows how much it grew or shrank', async ({ page }
 test('municipalities are colour coded by growth or decline around zero', async ({ page }) => {
 	await page.goto('./interactive/population');
 
-	const fill = (name: string) =>
-		page.getByRole('button', { name: new RegExp(`^${name},`) }).getAttribute('fill');
+	// `toHaveAttribute` rather than a bare `getAttribute`: the figures are fetched from /data/
+	// after the page loads, so before they land every area is hatched. A one-shot read here
+	// races that and sees `url(#no-data)`.
+	const expectFill = (name: string, fill: string) =>
+		expect(page.getByRole('button', { name: new RegExp(`^${name},`) })).toHaveAttribute(
+			'fill',
+			fill
+		);
 
 	// A diverging scale anchored at zero, in the same green/grey/red the unemployment map
 	// uses: Kökar (−75,8) takes the deepest red, Pelkosenniemi (+23,6) the deepest green, and
 	// Rauma (−5,0) the light red on the way in.
-	expect(await fill('Kökar')).toBe('#9a2929');
-	expect(await fill('Pelkosenniemi')).toBe('#1d6835');
-	expect(await fill('Rauma')).toBe('#de958e');
+	await expectFill('Kökar', '#9a2929');
+	await expectFill('Pelkosenniemi', '#1d6835');
+	await expectFill('Rauma', '#de958e');
 });
 
 test('the region tab rolls municipalities up into maakunnat', async ({ page }) => {
