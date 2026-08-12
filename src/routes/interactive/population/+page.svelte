@@ -81,7 +81,7 @@
 </script>
 
 <svelte:head>
-	<title>Maps | Population</title>
+	<title>Maps | Population change</title>
 </svelte:head>
 
 <MapShell
@@ -107,6 +107,12 @@
 			area.change !== null && view.countryChange !== null ? area.change - view.countryChange : null}
 
 		<h2 class="display-wide text-xl font-bold">{area.name}</h2>
+
+		{#if area.regionName}
+			<!-- Which maakunta it's in. 308 municipality names are not something anyone holds in
+			     their head, and the region is what locates an unfamiliar one. -->
+			<p class="stat-label mt-0.5" style:color="var(--ink-faint)">{area.regionName}</p>
+		{/if}
 
 		{#if failed}
 			<!-- The figures live in /data/, so they can be missing while the page itself is fine.

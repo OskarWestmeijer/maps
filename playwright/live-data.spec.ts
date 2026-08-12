@@ -45,6 +45,10 @@ test('a refreshed file on disk changes what the page shows', async ({ page }) =>
 	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
+	// Wait for the figures to land before hovering. A hover that arrives before hydration sets
+	// no state and is never replayed, so the panel would sit on the national figures for the
+	// rest of the test — an intermittent failure rather than a consistent one.
+	await expect(page.getByText(/^Data from /)).toBeVisible();
 	await page.getByRole('button', { name: /^Rauma,/ }).hover();
 
 	await expect(panel.getByRole('heading', { name: 'Rauma' })).toBeVisible();
@@ -86,7 +90,7 @@ test('an unreadable data directory leaves an outline map and says so', async ({ 
 	const panel = page.getByRole('complementary');
 
 	// The page itself is fine — geometry is baked in, so all 308 municipalities still render.
-	const map = page.getByRole('img', { name: 'Unemployment by municipality in Finland' });
+	const map = page.getByRole('img', { name: 'Unemployment rate by municipality in Finland' });
 	await expect(map.getByRole('button')).toHaveCount(308);
 
 	// But they're hatched rather than coloured, and the panel says why instead of leaving a

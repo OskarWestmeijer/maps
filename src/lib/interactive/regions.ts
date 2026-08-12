@@ -18,6 +18,18 @@ export type Region = {
 	natcodes: string[];
 };
 
+/**
+ * Shortens a maakunta name for a table column: "Pohjois-Pohjanmaa" -> "P-Pohjanmaa".
+ *
+ * Only the four compass/qualifier prefixes are touched, which is how these are abbreviated in
+ * Finnish anyway ("P-Savo", "K-Suomi") — the rest are already short enough. Longest output is
+ * 11 characters, against 17 for the longest full name, which is what lets the compare map's
+ * ranking fit a region column beside the name and the score.
+ */
+export function shortRegionName(name: string): string {
+	return name.replace(/^(Pohjois|Etelä|Keski|Varsinais)-/, (_, prefix: string) => `${prefix[0]}-`);
+}
+
 export const TAMPERE_REGION: Region = {
 	id: 'tampere',
 	label: 'Tampere Metro',

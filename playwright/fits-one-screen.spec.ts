@@ -22,12 +22,27 @@ async function expectFitsOneScreen(page: import('@playwright/test').Page) {
 
 	expect(overflow, `page overflows viewport by ${overflow}px`).toBeLessThanOrEqual(0);
 
+	// The document not overflowing is necessary but not sufficient: the panel column is a fixed
+	// `100dvh` box, so a panel taller than it spills *over* the footer without making the page
+	// any taller — the figures at the bottom are simply cut off, silently. Measuring the card
+	// against `main` is what catches that; the card scrolls internally instead (`MapShell`).
+	const spill = await page.evaluate(() => {
+		const card = document.querySelector('main aside > div:last-child');
+		const main = document.querySelector('main');
+
+		if (!card || !main) throw new Error('panel card or main not found');
+
+		return Math.round(card.getBoundingClientRect().bottom - main.getBoundingClientRect().bottom);
+	});
+
+	expect(spill, `info panel spills ${spill}px past the map area`).toBeLessThanOrEqual(0);
+
 	// The search box and Sources popover are the things most likely to be pushed below the fold.
 	await expect(page.getByPlaceholder('Search municipality…')).toBeInViewport();
 	await expect(page.getByRole('group').filter({ hasText: 'Sources' })).toBeInViewport();
 }
 
-const maps = ['./interactive/unemployment', './interactive/population'];
+const maps = ['./interactive/unemployment', './interactive/population', './interactive/compare'];
 
 for (const size of desktops) {
 	for (const map of maps) {

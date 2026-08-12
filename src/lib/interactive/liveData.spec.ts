@@ -4,10 +4,13 @@ import software from '../../../static/data/software_occupations_register_kunnat_
 import survey from '../../../static/data/unemployment_survey_national_135z.json';
 import population from '../../../static/data/population_register_kunnat_121w.json';
 import {
+	emptyCompareViews,
 	emptyPopulationViews,
 	emptyUnemploymentViews,
+	loadCompareViews,
 	loadPopulationViews,
 	loadUnemploymentViews,
+	type CompareGeometry,
 	type PopulationGeometry,
 	type UnemploymentGeometry
 } from './liveData';
@@ -97,7 +100,10 @@ const unemploymentGeometry: UnemploymentGeometry = {
 		area('837', 'Tampere', EMPTY_KUNTA_STATS),
 		area('211', 'Kangasala', EMPTY_KUNTA_STATS),
 		area('536', 'Nokia', EMPTY_KUNTA_STATS)
-	])
+	]),
+	// Only used to name each municipality's maakunta in the panel — this map reads the export's
+	// own MK rows for its regional figures.
+	membersOf: { '06': ['837', '211', '536'] }
 };
 
 const populationGeometry: PopulationGeometry = {
@@ -308,6 +314,129 @@ describe('loadPopulationViews', () => {
 	});
 });
 
+/**
+ * Föglö is in this fixture on purpose: its unemployment rate is suppressed in the real 12r5
+ * export (four Åland municipalities are), which is exactly the case the coverage floor exists
+ * for. See `MIN_COVERAGE` in `score.ts`.
+ */
+const compareGeometry: CompareGeometry = {
+	finland: map([
+		area('091', 'Helsinki', EMPTY_POPULATION_STATS, 214.21),
+		area('837', 'Tampere', EMPTY_POPULATION_STATS, 524.97),
+		area('536', 'Nokia', EMPTY_POPULATION_STATS, 289.44),
+		area('062', 'Föglö', EMPTY_POPULATION_STATS, 135.37)
+	]),
+	maakunta: map([area('06', 'Pirkanmaa', EMPTY_POPULATION_STATS, 0)]),
+	tampere: map([
+		area('837', 'Tampere', EMPTY_POPULATION_STATS, 524.97),
+		area('536', 'Nokia', EMPTY_POPULATION_STATS, 289.44)
+	]),
+	membersOf: { '06': ['837', '536'] }
+};
+
+describe('loadCompareViews', () => {
+	it('joins both tables onto one area and scores it', async () => {
+		const views = await loadCompareViews(compareGeometry);
+		const tampere = views.finland.areas.find((a) => a.code === '837');
+
+		// One figure from each export, and a score built from both.
+		expect(tampere?.rate).toBeGreaterThan(0);
+		expect(tampere?.change).not.toBeNull();
+		expect(tampere?.score.score).toBeGreaterThanOrEqual(0);
+		expect(tampere?.score.parts.map((p) => p.key)).toEqual(['jobs', 'people']);
+	});
+
+	it('names each municipality’s maakunta, for the ranking’s region column', async () => {
+		// Neither export carries membership — 12r5's MK rows are region totals — so this is
+		// inverted from the same `membersOf` grouping the Region tab is rolled up with, and
+		// shortened to fit a table column.
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.areas.find((a) => a.code === '837')?.regionName).toBe('Pirkanmaa');
+		// Areas outside the fixture's one region have no name to show rather than a wrong one.
+		expect(views.finland.areas.find((a) => a.code === '091')?.regionName).toBe('');
+	});
+
+	it('leaves a municipality with a suppressed indicator unscored', async () => {
+		// The regression the coverage floor exists to prevent: scored on population change
+		// alone, Föglö ranks first in the country.
+		const views = await loadCompareViews(compareGeometry);
+		const foglo = views.finland.areas.find((a) => a.code === '062');
+
+		expect(foglo?.rate).toBeNull();
+		expect(foglo?.change).not.toBeNull();
+		expect(foglo?.score.score).toBeNull();
+		expect(foglo?.score.rank).toBeNull();
+		expect(foglo?.score.isPartial).toBe(true);
+	});
+
+	it('draws the Tampere tab from its own geometry, not the whole-country shapes', async () => {
+		// The metro tab reuses the *figures* computed over the national list, and taking the
+		// whole area object instead would carry its `d` along — the coarse 2 km outline from
+		// the country file, drawn inside a viewBox meant for the dedicated 20 m one.
+		const views = await loadCompareViews({
+			...compareGeometry,
+			tampere: {
+				kuntas: [{ ...area('837', 'Tampere', EMPTY_POPULATION_STATS), d: 'M9,9L8,8Z' }],
+				viewBox: '0 0 10 10'
+			}
+		});
+
+		expect(views.tampere.areas[0].d).toBe('M9,9L8,8Z');
+		expect(views.tampere.viewBox).toBe('0 0 10 10');
+		// ...while still carrying the national figures and score.
+		expect(views.tampere.areas[0].score.score).toBe(
+			views.finland.areas.find((a) => a.code === '837')?.score.score
+		);
+	});
+
+	it("keeps a municipality's score identical on the Tampere tab", async () => {
+		// The scores are computed once over the municipal list and reused, never recomputed
+		// among the metro's own areas — a kunta's number must not move when the tab flips.
+		const views = await loadCompareViews(compareGeometry);
+		const national = views.finland.areas.find((a) => a.code === '837');
+		const metro = views.tampere.areas.find((a) => a.code === '837');
+
+		expect(metro?.score.score).toBe(national?.score.score);
+		expect(metro?.score.rank).toBe(national?.score.rank);
+		expect(metro?.score.ranked).toBe(national?.score.ranked);
+	});
+
+	it('takes the region rate from the export and rolls its population change up', async () => {
+		const views = await loadCompareViews(compareGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+
+		// 12r5 publishes MK rows, so the rate is read rather than derived...
+		expect(pirkanmaa?.rate).toBeGreaterThan(0);
+		// ...but 121w has none, so the change comes from `membersOf`. Two municipalities here,
+		// so it must sit between theirs rather than equal either.
+		const members = views.finland.areas.filter((a) => ['837', '536'].includes(a.code));
+		const changes = members.map((a) => a.change ?? 0);
+
+		expect(pirkanmaa?.change).toBeGreaterThan(Math.min(...changes));
+		expect(pirkanmaa?.change).toBeLessThan(Math.max(...changes));
+	});
+
+	it('carries both periods, since the two tables are on different cycles', async () => {
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.period).toBe('2026M06');
+		expect(views.finland.populationPeriod).toBe('2025');
+		expect(views.finland.period).not.toBe(views.finland.populationPeriod);
+	});
+
+	it('scores nothing when one of the two files is missing', async () => {
+		// Half the indicators is below the coverage floor for every area, so the map hatches
+		// entirely rather than ranking the country on jobs alone.
+		install({ 'population_register_kunnat_121w.json': new Response('', { status: 404 }) });
+
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.areas.every((a) => a.score.score === null)).toBe(true);
+		expect(views.finland.areas.find((a) => a.code === '837')?.rate).toBeGreaterThan(0);
+	});
+});
+
 describe('the pre-fetch state', () => {
 	it('has the real shapes but no figures, so the map draws as an outline', () => {
 		const views = emptyUnemploymentViews(unemploymentGeometry);
@@ -324,5 +453,16 @@ describe('the pre-fetch state', () => {
 		expect(views.finland.period).toBe('');
 		expect(views.finland.polled).toBeNull();
 		expect(views.finland.total.density).toBeNull();
+	});
+
+	it('gives the compare map an unscored shape per area, with its rows already named', () => {
+		// The panel renders the same rows before and after the fetch — labels present, figures
+		// em-dashed — so nothing jumps into place when the score arrives.
+		const views = emptyCompareViews(compareGeometry);
+
+		expect(views.finland.areas).toHaveLength(4);
+		expect(views.finland.areas.every((a) => a.score.score === null)).toBe(true);
+		expect(views.finland.areas[0].score.parts.map((p) => p.label)).toEqual(['Jobs', 'People']);
+		expect(views.finland.areas[0].score.ranked).toBe(0);
 	});
 });

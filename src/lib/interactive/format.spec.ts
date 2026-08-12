@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, sourceLine } from './format';
+import { decimal, formatDate, sourceLine } from './format';
+
+describe('decimal', () => {
+	it('groups the integer part and uses a Finnish comma', () => {
+		expect(decimal(3235.84)).toBe('3 235,8');
+	});
+
+	it('drops the separator entirely at zero digits, rather than joining on nothing', () => {
+		// The compare map's percentiles are whole numbers — a decimal place there would be false
+		// precision. Without the guard this rendered "96,undefined".
+		expect(decimal(96.4, 0)).toBe('96');
+		expect(decimal(1234.5, 0)).toBe('1 235');
+	});
+
+	it('em-dashes a missing figure', () => {
+		expect(decimal(null)).toBe('—');
+	});
+});
 
 describe('formatDate', () => {
 	it('formats the manifest timestamp', () => {

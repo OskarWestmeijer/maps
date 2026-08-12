@@ -10,15 +10,15 @@ test('the map switch moves between the two interactive maps', async ({ page }) =
 	await page.goto('./interactive/unemployment');
 
 	const nav = page.getByRole('navigation', { name: 'Interactive maps' });
-	await expect(nav.getByRole('link', { name: /Unemployment/ })).toHaveAttribute(
+	await expect(nav.getByRole('link', { name: /Unemployment rate/ })).toHaveAttribute(
 		'aria-current',
 		'page'
 	);
 
-	await nav.getByRole('link', { name: /Population/ }).click();
+	await nav.getByRole('link', { name: /Population change/ }).click();
 
 	await expect(page.getByRole('img', { name: /^Population change/ })).toBeVisible();
-	await expect(nav.getByRole('link', { name: /Population/ })).toHaveAttribute(
+	await expect(nav.getByRole('link', { name: /Population change/ })).toHaveAttribute(
 		'aria-current',
 		'page'
 	);
@@ -57,6 +57,8 @@ test('hovering a municipality shows how much it grew or shrank', async ({ page }
 	await page.getByRole('button', { name: /^Helsinki,/ }).hover();
 
 	await expect(panel.getByRole('heading', { name: 'Helsinki' })).toBeVisible();
+	// The maakunta, so an unfamiliar municipality is locatable without leaving the panel.
+	await expect(panel.getByText('Uusimaa', { exact: true })).toBeVisible();
 	await expect(panel.getByText('+14,9', { exact: true })).toBeVisible();
 	await expect(panel.getByText('+10 374 people', { exact: true })).toBeVisible();
 	await expect(panel.getByText('+11,9 pts', { exact: true })).toBeVisible();

@@ -16,7 +16,7 @@
  */
 
 import { base } from '$app/paths';
-import type { FinlandMap, Kunta } from './finland';
+import type { FinlandMap, Kunta, KuntaBase } from './finland';
 import {
 	aggregateKuntaStats,
 	toUnemploymentData,
@@ -39,7 +39,9 @@ import {
 	EMPTY_POPULATION_STATS,
 	type PopulationStats
 } from './population';
-import { TAMPERE_REGION } from './regions';
+import { scoreAreas, type Indicator, type ScoreBreakdown } from './score';
+import { percent, decimal } from './format';
+import { shortRegionName, TAMPERE_REGION } from './regions';
 
 /** Where the cron writes, and nginx serves from. Filenames carry the PxWeb table id, not the
  *  period — they are overwritten in place, and every parser reads the period from the file. */
@@ -115,6 +117,45 @@ function merge<A extends { code: string }, S>(
 	return areas.map((area) => ({ ...area, ...(stats.get(area.code) ?? empty) }));
 }
 
+/** What every geometry payload carries for the region lookup below. */
+type WithMembership = {
+	maakunta: { kuntas: { code: string; name: string }[] };
+	/** maakunta code -> its municipalities, derived geometrically at build time (`membership.ts`). */
+	membersOf: Record<string, string[]>;
+};
+
+/**
+ * kunta code -> the maakunta it's in, inverted from the `membersOf` grouping the geometry
+ * ships. All three maps name the region of whatever municipality is hovered, and this is the
+ * only place that membership exists: the PxWeb exports carry region *totals* (`MK` rows), never
+ * a list of which municipalities are in one.
+ *
+ * Geometry-derived, so it's known before any figures are fetched — the empty views set it, and
+ * `merge` carries it through untouched when the statistics land.
+ */
+function regionNames(geometry: WithMembership): Map<string, string> {
+	const labels = new Map(geometry.maakunta.kuntas.map((region) => [region.code, region.name]));
+	const names = new Map<string, string>();
+
+	for (const [region, members] of Object.entries(geometry.membersOf)) {
+		const label = labels.get(region);
+
+		if (!label) continue;
+
+		for (const member of members) names.set(member, label);
+	}
+
+	return names;
+}
+
+/** Tags each area with its maakunta. Empty for the Region tab, whose areas *are* maakunnat. */
+function withRegion<A extends { code: string }>(
+	areas: A[],
+	names: Map<string, string>
+): (A & { regionName: string })[] {
+	return areas.map((area) => ({ ...area, regionName: names.get(area.code) ?? '' }));
+}
+
 // --------------------------------------------------------------------- unemployment
 
 /** What `+page.server.ts` ships: geometry per tab, with every stat field present and null. */
@@ -122,9 +163,16 @@ export type UnemploymentGeometry = {
 	finland: FinlandMap<KuntaStats>;
 	maakunta: FinlandMap<KuntaStats>;
 	tampere: FinlandMap<KuntaStats>;
+	/** Only for naming each municipality's maakunta in the panel — this map reads 12r5's own
+	 *  region rows rather than aggregating anything from it. */
+	membersOf: Record<string, string[]>;
 };
 
-export type UnemploymentView = FinlandMap<KuntaStats> & {
+/** A municipality with its figures and the maakunta it sits in. */
+export type UnemploymentArea = Kunta<KuntaStats> & { regionName: string };
+
+export type UnemploymentView = Omit<FinlandMap<KuntaStats>, 'kuntas'> & {
+	kuntas: UnemploymentArea[];
 	national: KuntaStats;
 	/** The whole-country rate, carried on *every* view: it's what the diverging colour scale
 	 *  pivots around, and the panel's "vs Finland" delta compares against. Keeping it national
@@ -155,8 +203,10 @@ const EMPTY_SOFTWARE_JOBS: SoftwareJobsBlock = {
 
 /** The state the page renders in until the fetch resolves: real shapes, no figures. */
 export function emptyUnemploymentViews(geometry: UnemploymentGeometry): UnemploymentViews {
+	const names = regionNames(geometry);
 	const empty = (map: FinlandMap<KuntaStats>): UnemploymentView => ({
 		...map,
+		kuntas: withRegion(map.kuntas, names),
 		national: EMPTY_KUNTA_STATS,
 		countryRate: null,
 		period: '',
@@ -247,6 +297,8 @@ export type PopulationArea = Kunta<PopulationStats> & {
 	change: number | null;
 	/** Inhabitants per km² of land. Shown in the panel; no longer what colours the map. */
 	density: number | null;
+	/** The maakunta this municipality is in. Empty on the Region tab and on a roll-up. */
+	regionName: string;
 };
 
 export type PopulationGeometry = {
@@ -276,9 +328,10 @@ export type PopulationView = {
 
 export type PopulationViews = Record<'finland' | 'maakunta' | 'tampere', PopulationView>;
 
-function withDerived(area: Kunta<PopulationStats>): PopulationArea {
+function withDerived(area: Kunta<PopulationStats> & { regionName?: string }): PopulationArea {
 	return {
 		...area,
+		regionName: area.regionName ?? '',
 		change: changePer1000(area.totalChange, area.population),
 		density: densityOf(area.population, area.landArea)
 	};
@@ -299,14 +352,17 @@ function rollUp(name: string, areas: PopulationArea[]): PopulationArea {
 		code: '',
 		landArea,
 		d: '',
+		// A roll-up spans regions (or is the whole country), so it belongs to none.
+		regionName: '',
 		change: changePer1000(stats.totalChange, stats.population),
 		density: densityOf(stats.population, landArea)
 	};
 }
 
 export function emptyPopulationViews(geometry: PopulationGeometry): PopulationViews {
+	const names = regionNames(geometry);
 	const empty = (map: FinlandMap<PopulationStats>, name: string): PopulationView => {
-		const areas = map.kuntas.map(withDerived);
+		const areas = withRegion(map.kuntas, names).map(withDerived);
 
 		return {
 			areas,
@@ -337,8 +393,9 @@ export async function loadPopulationViews(geometry: PopulationGeometry): Promise
 	if (!data) return emptyPopulationViews(geometry);
 
 	const polled = polledFor(manifest, FILES.population);
+	const names = regionNames(geometry);
 	const municipal = merge(geometry.finland.kuntas, data.stats, EMPTY_POPULATION_STATS);
-	const areas = municipal.map(withDerived);
+	const areas = withRegion(municipal, names).map(withDerived);
 	const byCode = new Map(areas.map((a) => [a.code, a]));
 
 	// The Region tab: municipal figures grouped by the maakunta each municipality's geometry
@@ -360,9 +417,10 @@ export async function loadPopulationViews(geometry: PopulationGeometry): Promise
 		landArea: 0
 	}).map(withDerived);
 
-	const tampereAreas = merge(geometry.tampere.kuntas, data.stats, EMPTY_POPULATION_STATS).map(
-		withDerived
-	);
+	const tampereAreas = withRegion(
+		merge(geometry.tampere.kuntas, data.stats, EMPTY_POPULATION_STATS),
+		names
+	).map(withDerived);
 
 	// Finland's own total comes from the export's whole-country row; the land area behind it is
 	// the sum of the municipalities', the same figure the map is drawn from.
@@ -373,6 +431,7 @@ export async function loadPopulationViews(geometry: PopulationGeometry): Promise
 		code: '',
 		landArea: countryLandArea,
 		d: '',
+		regionName: '',
 		change: changePer1000(data.national.totalChange, data.national.population),
 		density: densityOf(data.national.population, countryLandArea)
 	};
@@ -397,6 +456,222 @@ export async function loadPopulationViews(geometry: PopulationGeometry): Promise
 			areas: tampereAreas,
 			viewBox: geometry.tampere.viewBox,
 			total: rollUp(TAMPERE_REGION.label, tampereAreas),
+			...common
+		}
+	};
+}
+
+// -------------------------------------------------------------------------- compare
+
+/**
+ * The composite score's areas carry one figure per domain, plus the breakdown `score.ts`
+ * computes from them. Adding a domain means one more field here and one more `INDICATORS`
+ * entry — nothing else in this module changes shape.
+ */
+export type CompareArea = KuntaBase & {
+	/** Registered unemployment rate, from 12r5. Lower is better. */
+	rate: number | null;
+	/** Population change per 1 000, from 121w. Higher is better. */
+	change: number | null;
+	score: ScoreBreakdown;
+	/** The maakunta this municipality is in, full name — the panel shows it whole and the
+	 *  ranking shortens it at render (`shortRegionName`), so the data stays the published one.
+	 *  Empty on the Region tab, whose areas *are* maakunnat, and before the fetch. */
+	regionName: string;
+};
+
+/**
+ * The domains the score folds together, in panel order. Equal weights — see `MIN_COVERAGE` in
+ * `score.ts` for why an area missing any of them isn't scored at all.
+ *
+ * This array is the extension point: education, economy and housing each become one more entry
+ * once their table is fetched and parsed, and the page picks them up without further edits.
+ */
+export const INDICATORS: Indicator<CompareArea>[] = [
+	{
+		key: 'jobs',
+		label: 'Jobs',
+		valueOf: (area) => area.rate,
+		format: percent,
+		higherIsBetter: false,
+		weight: 1
+	},
+	{
+		key: 'people',
+		label: 'People',
+		valueOf: (area) => area.change,
+		// Always signed, with a real minus — the same shape the population map gives it, and
+		// the sign is the whole point of a change figure. `decimal` alone would render an ASCII
+		// hyphen and no plus.
+		format: (value) =>
+			value === null
+				? 'no data'
+				: `${value > 0 ? '+' : value < 0 ? '−' : ''}${decimal(Math.abs(value))} per 1 000`,
+		higherIsBetter: true,
+		weight: 1
+	}
+];
+
+const EMPTY_SCORE: ScoreBreakdown = {
+	score: null,
+	rank: null,
+	ranked: 0,
+	parts: INDICATORS.map((indicator) => ({
+		key: indicator.key,
+		label: indicator.label,
+		percentile: null,
+		value: null,
+		formatted: indicator.format(null)
+	})),
+	isPartial: true
+};
+
+export type CompareView = {
+	areas: CompareArea[];
+	viewBox: string;
+	/** Both tables' periods, since they're released on different cycles. */
+	period: string;
+	populationPeriod: string;
+	polled: string | null;
+	populationPolled: string | null;
+	source: string;
+	populationSource: string;
+};
+
+export type CompareViews = Record<'finland' | 'maakunta' | 'tampere', CompareView>;
+
+/** Geometry is identical to the population page's — the Region tab needs `membersOf` for the
+ *  same reason: 121w has no region rows, so its regional figures are rolled up here. */
+export type CompareGeometry = PopulationGeometry;
+
+function blankArea(area: {
+	code: string;
+	name: string;
+	d: string;
+	regionName: string;
+}): CompareArea {
+	return { ...area, landArea: null, rate: null, change: null, score: EMPTY_SCORE };
+}
+
+export function emptyCompareViews(geometry: CompareGeometry): CompareViews {
+	const names = regionNames(geometry);
+	const empty = (map: FinlandMap<PopulationStats>): CompareView => ({
+		areas: withRegion(map.kuntas, names).map(blankArea),
+		viewBox: map.viewBox,
+		period: '',
+		populationPeriod: '',
+		polled: null,
+		populationPolled: null,
+		source: '',
+		populationSource: ''
+	});
+
+	return {
+		finland: empty(geometry.finland),
+		maakunta: empty(geometry.maakunta),
+		tampere: empty(geometry.tampere)
+	};
+}
+
+export async function loadCompareViews(geometry: CompareGeometry): Promise<CompareViews> {
+	const [registerRaw, populationRaw, manifest] = await Promise.all([
+		fetchExport(FILES.unemployment),
+		fetchExport(FILES.population),
+		fetchExport(FILES.manifest) as Promise<Manifest | null>
+	]);
+
+	const register = parse(registerRaw, (px) => toUnemploymentData(px, 'KU'));
+	const registerRegions = parse(registerRaw, (px) => toUnemploymentData(px, 'MK'));
+	const population = parse(populationRaw, toPopulationData);
+
+	const blank = emptyCompareViews(geometry);
+
+	if (!register && !population) return blank;
+
+	/** Joins both sources onto one tab's shapes. `changeOf` differs per area level: the
+	 *  municipal tabs read the export's own rows, the Region tab a roll-up of them. */
+	const join = (
+		areas: CompareArea[],
+		rateOf: (code: string) => number | null,
+		changeOf: (code: string) => number | null
+	): CompareArea[] =>
+		areas.map((area) => ({ ...area, rate: rateOf(area.code), change: changeOf(area.code) }));
+
+	const rateOf = (code: string) => register?.stats.get(code)?.rate ?? null;
+	const populationChangeOf = (code: string) => {
+		const stats = population?.stats.get(code);
+
+		return stats ? changePer1000(stats.totalChange, stats.population) : null;
+	};
+
+	// Municipal figures, joined once and scored against all 308 — never against a tab's own
+	// subset. A municipality's score has to mean the same thing whichever tab it's seen on.
+	// `blank` already carries each area's maakunta — it comes from the geometry, not the
+	// statistics, so it's known before the fetch and survives the join untouched.
+	const municipal = join(blank.finland.areas, rateOf, populationChangeOf);
+	const municipalScores = scoreAreas(municipal, INDICATORS);
+	const scoredMunicipal = municipal.map((area) => ({
+		...area,
+		score: municipalScores.get(area.code) ?? EMPTY_SCORE
+	}));
+	const byCode = new Map(scoredMunicipal.map((area) => [area.code, area]));
+
+	// The Region tab: 12r5 publishes its own MK rows, but 121w has none, so the population
+	// figure is rolled up from each region's municipalities (the grouping `membership.ts`
+	// derived at build time). Regions are ranked against the other 18, not against the 308 —
+	// they're a different kind of area, and the Sources popover says so.
+	const regionAreas = join(
+		blank.maakunta.areas,
+		(code) => registerRegions?.stats.get(code)?.rate ?? null,
+		(code) => {
+			const members = geometry.membersOf[code] ?? [];
+			const stats = aggregatePopulationStats(
+				members.map((member) => population?.stats.get(member) ?? EMPTY_POPULATION_STATS)
+			);
+
+			return changePer1000(stats.totalChange, stats.population);
+		}
+	);
+	const regionScores = scoreAreas(regionAreas, INDICATORS);
+	const scoredRegions = regionAreas.map((area) => ({
+		...area,
+		score: regionScores.get(area.code) ?? EMPTY_SCORE
+	}));
+
+	const common = {
+		period: register?.period ?? '',
+		populationPeriod: population?.period ?? '',
+		polled: polledFor(manifest, FILES.unemployment),
+		populationPolled: polledFor(manifest, FILES.population),
+		source: register?.source ?? '',
+		populationSource: population?.source ?? ''
+	};
+
+	return {
+		finland: { areas: scoredMunicipal, viewBox: geometry.finland.viewBox, ...common },
+		maakunta: { areas: scoredRegions, viewBox: geometry.maakunta.viewBox, ...common },
+		// The same municipal scores, filtered to the metro's eight — not rescored among
+		// themselves, which would make a kunta's number change when the tab flips.
+		//
+		// Only the *figures* are taken from that lookup. Spreading the whole municipal area over
+		// this tab would bring its `d` with it, replacing the metro's own 20 m geometry with the
+		// coarse 2 km shapes from the whole-country file — the right municipalities drawn at the
+		// wrong detail, inside a viewBox meant for the finer ones.
+		tampere: {
+			areas: blank.tampere.areas.map((area) => {
+				const scored = byCode.get(area.code);
+
+				return scored
+					? {
+							...area,
+							rate: scored.rate,
+							change: scored.change,
+							score: scored.score,
+							regionName: scored.regionName
+						}
+					: area;
+			}),
+			viewBox: geometry.tampere.viewBox,
 			...common
 		}
 	};

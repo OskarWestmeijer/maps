@@ -14,8 +14,12 @@
 	let { children } = $props();
 
 	const maps = [
-		{ href: '/interactive/unemployment', label: 'Unemployment', icon: '📉' },
-		{ href: '/interactive/population', label: 'Population', icon: '🏘️' }
+		// Named for the measure each one actually maps, not the topic: the unemployment map is
+		// the registered *rate*, and the population map is last year's *change*, not a headcount.
+		{ href: '/interactive/unemployment', label: 'Unemployment rate', icon: '📉' },
+		{ href: '/interactive/population', label: 'Population change', icon: '🏘️' },
+		// The composite of the two above (and of whatever domains follow), so it sits last.
+		{ href: '/interactive/compare', label: 'Compare', icon: '⚖️' }
 	];
 
 	const current = $derived(page.url.pathname);
@@ -54,6 +58,11 @@
 
 	.map-switch {
 		display: inline-flex;
+		/* Wraps rather than running off the side: three pills, one of them named after both
+		   measures it combines, are wider than a phone. Only ever wraps below `lg`, where the
+		   page scrolls anyway and `--map-chrome` isn't in play. */
+		flex-wrap: wrap;
+		justify-content: center;
 		gap: 0.25rem;
 		padding: 0.25rem;
 		border-radius: 999px;

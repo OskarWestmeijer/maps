@@ -42,7 +42,18 @@
 		fillFor: (area: A) => string;
 		valueLabel: (area: A) => string;
 		panel: Snippet<
-			[{ displayed: A | null; region: RegionId; areaNoun: string; regionLabel: string }]
+			[
+				{
+					displayed: A | null;
+					region: RegionId;
+					areaNoun: string;
+					regionLabel: string;
+					/** Selects an area from inside the panel, exactly as picking a search result
+					 *  does — so a panel can offer its own shortcuts into the map (the compare
+					 *  map's ranking) without owning the selection state. */
+					select: (area: A) => void;
+				}
+			]
 		>;
 		sources: Snippet<[{ region: RegionId; areaNoun: string }]>;
 	} = $props();
@@ -227,7 +238,7 @@
 			-->
 			<span class="stat-label">
 				{sourceLine(
-					view.period && `Data from ${formatPeriod(view.period)}`,
+					view.period && `Data from ${view.periodLabel ?? formatPeriod(view.period)}`,
 					view.polled && `polled ${formatDate(view.polled)}`
 				)}
 			</span>
@@ -262,7 +273,14 @@
 					placeholder={`Search ${areaNoun}…`}
 					class="input join-item w-full border-base-300 bg-base-100 input-sm focus:outline-accent"
 					bind:value={search}
-					oninput={() => (selectedCode = null)}
+					oninput={() => {
+						selectedCode = null;
+						// Picking a result closes the list but keeps focus in the box (the result
+						// button's `mousedown` preventDefault is what stops the blur). Without
+						// reopening here, typing a second query after picking a first one filters
+						// nothing visible until the box is blurred and refocused.
+						searchOpen = true;
+					}}
 					onfocus={() => (searchOpen = true)}
 					onblur={() => (searchOpen = false)}
 					onkeydown={(e) => {
@@ -301,14 +319,23 @@
 			{/if}
 		</div>
 
-		<div class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
+		<!--
+			From `lg` up the card takes the height the search box leaves and scrolls inside itself.
+			Without `min-h-0 flex-1 overflow-y-auto` a panel taller than the column doesn't push the
+			page down (the column is a fixed `100dvh` box) — it silently spills over the footer and
+			its last rows are cut off, which is what the population panel did at 1280×720. The panel
+			grows with every dataset joined onto it, so this has to hold as domains are added.
+			Below `lg` the page scrolls as a whole and the card is left to its natural height.
+		-->
+		<div
+			class="rounded-lg border border-base-300 bg-base-100 shadow-sm lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+		>
 			<!--
 				Slightly tighter padding from `lg` up, where the panel has to share one viewport with
-				the map (see `fits-one-screen.spec.ts`) — below that the page scrolls anyway, so it
-				keeps the roomier inset.
+				the map — below that the page scrolls anyway, so it keeps the roomier inset.
 			-->
 			<div class="min-h-60 p-5 lg:p-4">
-				{@render panel({ displayed, region, areaNoun, regionLabel })}
+				{@render panel({ displayed, region, areaNoun, regionLabel, select: selectArea })}
 			</div>
 		</div>
 	</aside>

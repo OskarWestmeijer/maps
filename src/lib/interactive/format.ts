@@ -24,7 +24,9 @@ export function decimal(value: number | null, digits = 1): string {
 
 	const [whole, fraction] = value.toFixed(digits).split('.');
 
-	return `${count(Number(whole))},${fraction}`;
+	// `digits: 0` leaves no fractional part to join on — without this it renders "3,undefined".
+	// Used for the compare map's percentiles, where a decimal place would be false precision.
+	return fraction === undefined ? count(Number(whole)) : `${count(Number(whole))},${fraction}`;
 }
 
 /** Always signed, with a real minus sign — so a pair of them reads as one scale. */

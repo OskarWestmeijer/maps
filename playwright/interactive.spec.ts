@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('map renders every municipality', async ({ page }) => {
 	await page.goto('./interactive/unemployment');
 
-	const map = page.getByRole('img', { name: 'Unemployment by municipality in Finland' });
+	const map = page.getByRole('img', { name: 'Unemployment rate by municipality in Finland' });
 	await expect(map).toBeVisible();
 	await expect(map.getByRole('button')).toHaveCount(308);
 });
@@ -90,6 +90,8 @@ test('shows software & app development jobs alongside the national and municipal
 	await page.getByRole('button', { name: /^Helsinki,/ }).hover();
 
 	await expect(panel.getByRole('heading', { name: 'Helsinki' })).toBeVisible();
+	// The maakunta, so an unfamiliar municipality is locatable without leaving the panel.
+	await expect(panel.getByText('Uusimaa', { exact: true })).toBeVisible();
 	await expect(panel.getByText('504', { exact: true })).toBeVisible();
 	await expect(panel.getByText('0', { exact: true })).toBeVisible();
 });
@@ -98,7 +100,7 @@ test('the Tampere tab scopes the map, panel, and search to that region only', as
 	await page.goto('./interactive/unemployment');
 
 	const panel = page.getByRole('complementary');
-	const map = page.getByRole('img', { name: 'Unemployment by municipality in Tampere Metro' });
+	const map = page.getByRole('img', { name: 'Unemployment rate by municipality in Tampere Metro' });
 
 	await page.getByRole('tab', { name: 'Tampere Metro' }).click();
 
@@ -139,7 +141,9 @@ test('the Tampere tab scopes the map, panel, and search to that region only', as
 	// Switching back to Finland restores the full country.
 	await page.getByRole('tab', { name: 'Finland' }).click();
 	await expect(
-		page.getByRole('img', { name: 'Unemployment by municipality in Finland' }).getByRole('button')
+		page
+			.getByRole('img', { name: 'Unemployment rate by municipality in Finland' })
+			.getByRole('button')
 	).toHaveCount(308);
 });
 
