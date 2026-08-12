@@ -47,6 +47,16 @@ SOFTWARE_METADATA = {
     ]
 }
 
+# 14ww has no dimension beyond area and measure, which is what lets it be fetched with no
+# `select` at all — the area code is dated, so it can only be found via the metadata.
+INCOME_METADATA = {
+    "variables": [
+        {"code": "alue_23_20250101", "text": "Alue", "values": ["SSS", "KU020", "MK01", "SK064"]},
+        {"code": "contentscode", "text": "Tiedot", "values": ["tjt-ekvikturaha_med", "rpt_aste"]},
+        {"code": "timeperiod_y", "text": "Vuosi", "time": True, "values": ["2023", "2024"]},
+    ]
+}
+
 
 class BuildQueryTest(unittest.TestCase):
     def test_takes_only_the_newest_period(self):
@@ -97,6 +107,17 @@ class BuildQueryTest(unittest.TestCase):
 
         with self.assertRaisesRegex(FetchError, "2519"):
             build_query(table("software"), thinned)
+
+    def test_takes_the_income_table_whole_without_any_narrowing(self):
+        """14ww's only dimensions are area and measure, so the generic rules suffice."""
+
+        query = build_query(table("income"), INCOME_METADATA)
+
+        self.assertEqual(
+            ["alue_23_20250101", "contentscode", "timeperiod_y"], [q["code"] for q in query]
+        )
+        self.assertEqual({"filter": "all", "values": ["*"]}, query[0]["selection"])
+        self.assertEqual({"filter": "top", "values": ["1"]}, query[2]["selection"])
 
     def test_rejects_metadata_with_no_variables(self):
         with self.assertRaisesRegex(FetchError, "no variables"):
@@ -166,6 +187,36 @@ class ValidateJsonTest(unittest.TestCase):
         rows += [{"key": ["2025", f"KU{n:03d}"], "values": ["1"] * 6} for n in range(320)]
 
         self.assertEqual("2025", validate_json(table("population"), px(columns, rows)))
+
+    def test_matches_income_columns_whether_or_not_they_carry_a_prefix(self):
+        """14ww mixes `tjt-`-prefixed measures with unprefixed ones in the same export."""
+
+        columns = [("alue_23_20250101", "d"), ("timeperiod_y", "t")]
+        columns += [
+            ("tjt-henkiloita", "c"),
+            ("hkturaha18_med", "c"),
+            ("tjt-ekvikturaha_med", "c"),
+            ("gini_kturaha", "c"),
+            ("rpt_aste", "c"),
+        ]
+        rows = [{"key": ["SSS", "2024"], "values": ["1"] * 5}]
+        rows += [{"key": [f"KU{n:03d}", "2024"], "values": ["1"] * 5} for n in range(320)]
+
+        self.assertEqual("2024", validate_json(table("income"), px(columns, rows)))
+
+    def test_rejects_an_income_export_that_lost_the_median_column(self):
+        columns = [("alue_23_20250101", "d"), ("timeperiod_y", "t")]
+        columns += [
+            ("tjt-henkiloita", "c"),
+            ("hkturaha18_med", "c"),
+            ("gini_kturaha", "c"),
+            ("rpt_aste", "c"),
+        ]
+        rows = [{"key": ["SSS", "2024"], "values": ["1"] * 4}]
+        rows += [{"key": [f"KU{n:03d}", "2024"], "values": ["1"] * 4} for n in range(320)]
+
+        with self.assertRaisesRegex(FetchError, "ekvikturaha_med"):
+            validate_json(table("income"), px(columns, rows))
 
     def test_national_only_table_needs_no_whole_country_row(self):
         columns = [("timeperiod_m", "t"), ("tyottaste_trendi", "c"), ("tyti-Tyottomyysaste", "c")]

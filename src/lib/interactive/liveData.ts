@@ -39,8 +39,9 @@ import {
 	EMPTY_POPULATION_STATS,
 	type PopulationStats
 } from './population';
+import { incomeDeviation, toIncomeData, EMPTY_INCOME_STATS, type IncomeStats } from './income';
 import { scoreAreas, type Indicator, type ScoreBreakdown } from './score';
-import { percent, decimal } from './format';
+import { count, percent, decimal } from './format';
 import { shortRegionName, TAMPERE_REGION } from './regions';
 
 /** Where the cron writes, and nginx serves from. Filenames carry the PxWeb table id, not the
@@ -50,6 +51,7 @@ const FILES = {
 	software: 'software_occupations_register_kunnat_12ti.json',
 	survey: 'unemployment_survey_national_135z.json',
 	population: 'population_register_kunnat_121w.json',
+	income: 'income_register_kunnat_14ww.json',
 	manifest: 'manifest.json'
 } as const;
 
@@ -461,6 +463,118 @@ export async function loadPopulationViews(geometry: PopulationGeometry): Promise
 	};
 }
 
+// --------------------------------------------------------------------------- income
+
+export type IncomeArea = Kunta<IncomeStats> & {
+	/** The maakunta this municipality is in. Empty on the Region tab and on the metro tab's
+	 *  areas' behalf only where a roll-up would span several — here every area has one. */
+	regionName: string;
+};
+
+export type IncomeGeometry = {
+	finland: FinlandMap<IncomeStats>;
+	maakunta: FinlandMap<IncomeStats>;
+	tampere: FinlandMap<IncomeStats>;
+	/** Only for naming each municipality's maakunta in the panel. Unlike the population map,
+	 *  nothing here is rolled up from it: 14ww publishes its own `MK` rows, and a median could
+	 *  not be aggregated even if it didn't. */
+	membersOf: Record<string, string[]>;
+};
+
+export type IncomeView = {
+	areas: IncomeArea[];
+	viewBox: string;
+	/**
+	 * The area's own published figures — the `SSS` row on the Finland and Region tabs, which
+	 * both cover the whole country.
+	 *
+	 * **Null on the Tampere Metro tab, on purpose.** Every other map rolls a hand-picked region
+	 * up from its municipalities, because their measures are ratios of counts. A median is not:
+	 * it needs the household-level distribution, which the export doesn't ship (see the note in
+	 * `income.ts`). Statistics Finland publishes no row for these eight municipalities either —
+	 * the seutukunta row `SK064` covers eleven. So that tab has no headline figure and the panel
+	 * says so rather than inventing one.
+	 */
+	total: IncomeArea | null;
+	/** Finland's own median, carried on *every* view: it's what the diverging scale pivots
+	 *  around and what the panel's chip compares against, so a municipality keeps its colour
+	 *  when the tab flips. */
+	countryMedian: number | null;
+	period: string;
+	source: string;
+	polled: string | null;
+};
+
+export type IncomeViews = Record<'finland' | 'maakunta' | 'tampere', IncomeView>;
+
+/** The whole-country figures shaped like an area, so the panel reads one type either way. */
+function asArea(name: string, stats: IncomeStats): IncomeArea {
+	return { ...stats, name, code: '', landArea: null, d: '', regionName: '' };
+}
+
+export function emptyIncomeViews(geometry: IncomeGeometry): IncomeViews {
+	const names = regionNames(geometry);
+	const empty = (map: FinlandMap<IncomeStats>, total: IncomeArea | null): IncomeView => ({
+		areas: withRegion(map.kuntas, names),
+		viewBox: map.viewBox,
+		total,
+		countryMedian: null,
+		period: '',
+		source: '',
+		polled: null
+	});
+
+	return {
+		finland: empty(geometry.finland, asArea('Finland', EMPTY_INCOME_STATS)),
+		maakunta: empty(geometry.maakunta, asArea('Finland', EMPTY_INCOME_STATS)),
+		tampere: empty(geometry.tampere, null)
+	};
+}
+
+export async function loadIncomeViews(geometry: IncomeGeometry): Promise<IncomeViews> {
+	const [raw, manifest] = await Promise.all([
+		fetchExport(FILES.income),
+		fetchExport(FILES.manifest) as Promise<Manifest | null>
+	]);
+
+	const municipal = parse(raw, (px) => toIncomeData(px, 'KU'));
+
+	if (!municipal) return emptyIncomeViews(geometry);
+
+	// The Region tab reads the export's own MK rows — Statistics Finland computed those from the
+	// microdata, which is the only way a regional median can be had.
+	const regional = parse(raw, (px) => toIncomeData(px, 'MK'));
+	const names = regionNames(geometry);
+	const polled = polledFor(manifest, FILES.income);
+	const country = asArea('Finland', municipal.national);
+
+	const common = {
+		countryMedian: municipal.national.medianIncome,
+		period: municipal.period,
+		source: municipal.source,
+		polled
+	};
+
+	const build = (
+		map: FinlandMap<IncomeStats>,
+		stats: Map<string, IncomeStats>,
+		total: IncomeArea | null
+	): IncomeView => ({
+		areas: withRegion(merge(map.kuntas, stats, EMPTY_INCOME_STATS), names),
+		viewBox: map.viewBox,
+		total,
+		...common
+	});
+
+	return {
+		finland: build(geometry.finland, municipal.stats, country),
+		// Same country, coarser areas — so the Region tab's headline stays the national figure.
+		maakunta: build(geometry.maakunta, regional?.stats ?? new Map(), country),
+		// No published row for these eight, and no way to derive one. See `IncomeView.total`.
+		tampere: build(geometry.tampere, municipal.stats, null)
+	};
+}
+
 // -------------------------------------------------------------------------- compare
 
 /**
@@ -473,6 +587,8 @@ export type CompareArea = KuntaBase & {
 	rate: number | null;
 	/** Population change per 1 000, from 121w. Higher is better. */
 	change: number | null;
+	/** Median disposable income per consumption unit, from 14ww. Higher is better. */
+	income: number | null;
 	score: ScoreBreakdown;
 	/** The maakunta this municipality is in, full name — the panel shows it whole and the
 	 *  ranking shortens it at render (`shortRegionName`), so the data stays the published one.
@@ -509,6 +625,14 @@ export const INDICATORS: Indicator<CompareArea>[] = [
 				: `${value > 0 ? '+' : value < 0 ? '−' : ''}${decimal(Math.abs(value))} per 1 000`,
 		higherIsBetter: true,
 		weight: 1
+	},
+	{
+		key: 'income',
+		label: 'Income',
+		valueOf: (area) => area.income,
+		format: (value) => (value === null ? 'no data' : `${count(value)} €`),
+		higherIsBetter: true,
+		weight: 1
 	}
 ];
 
@@ -529,13 +653,16 @@ const EMPTY_SCORE: ScoreBreakdown = {
 export type CompareView = {
 	areas: CompareArea[];
 	viewBox: string;
-	/** Both tables' periods, since they're released on different cycles. */
+	/** Every table's period, since they're released on independent cycles. */
 	period: string;
 	populationPeriod: string;
+	incomePeriod: string;
 	polled: string | null;
 	populationPolled: string | null;
+	incomePolled: string | null;
 	source: string;
 	populationSource: string;
+	incomeSource: string;
 };
 
 export type CompareViews = Record<'finland' | 'maakunta' | 'tampere', CompareView>;
@@ -550,7 +677,7 @@ function blankArea(area: {
 	d: string;
 	regionName: string;
 }): CompareArea {
-	return { ...area, landArea: null, rate: null, change: null, score: EMPTY_SCORE };
+	return { ...area, landArea: null, rate: null, change: null, income: null, score: EMPTY_SCORE };
 }
 
 export function emptyCompareViews(geometry: CompareGeometry): CompareViews {
@@ -560,10 +687,13 @@ export function emptyCompareViews(geometry: CompareGeometry): CompareViews {
 		viewBox: map.viewBox,
 		period: '',
 		populationPeriod: '',
+		incomePeriod: '',
 		polled: null,
 		populationPolled: null,
+		incomePolled: null,
 		source: '',
-		populationSource: ''
+		populationSource: '',
+		incomeSource: ''
 	});
 
 	return {
@@ -574,28 +704,35 @@ export function emptyCompareViews(geometry: CompareGeometry): CompareViews {
 }
 
 export async function loadCompareViews(geometry: CompareGeometry): Promise<CompareViews> {
-	const [registerRaw, populationRaw, manifest] = await Promise.all([
+	const [registerRaw, populationRaw, incomeRaw, manifest] = await Promise.all([
 		fetchExport(FILES.unemployment),
 		fetchExport(FILES.population),
+		fetchExport(FILES.income),
 		fetchExport(FILES.manifest) as Promise<Manifest | null>
 	]);
 
 	const register = parse(registerRaw, (px) => toUnemploymentData(px, 'KU'));
 	const registerRegions = parse(registerRaw, (px) => toUnemploymentData(px, 'MK'));
 	const population = parse(populationRaw, toPopulationData);
+	const income = parse(incomeRaw, (px) => toIncomeData(px, 'KU'));
+	const incomeRegions = parse(incomeRaw, (px) => toIncomeData(px, 'MK'));
 
 	const blank = emptyCompareViews(geometry);
 
-	if (!register && !population) return blank;
+	if (!register && !population && !income) return blank;
 
-	/** Joins both sources onto one tab's shapes. `changeOf` differs per area level: the
-	 *  municipal tabs read the export's own rows, the Region tab a roll-up of them. */
-	const join = (
-		areas: CompareArea[],
-		rateOf: (code: string) => number | null,
-		changeOf: (code: string) => number | null
-	): CompareArea[] =>
-		areas.map((area) => ({ ...area, rate: rateOf(area.code), change: changeOf(area.code) }));
+	/** One accessor per indicator field, so a new domain is an extra key here rather than an
+	 *  extra parameter. They differ per area level: most tabs read an export's own rows, while
+	 *  the Region tab rolls population up (121w has no region rows to read). */
+	type Accessors = Record<'rate' | 'change' | 'income', (code: string) => number | null>;
+
+	const join = (areas: CompareArea[], of: Accessors): CompareArea[] =>
+		areas.map((area) => ({
+			...area,
+			rate: of.rate(area.code),
+			change: of.change(area.code),
+			income: of.income(area.code)
+		}));
 
 	const rateOf = (code: string) => register?.stats.get(code)?.rate ?? null;
 	const populationChangeOf = (code: string) => {
@@ -603,12 +740,17 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 
 		return stats ? changePer1000(stats.totalChange, stats.population) : null;
 	};
+	const incomeOf = (code: string) => income?.stats.get(code)?.medianIncome ?? null;
 
 	// Municipal figures, joined once and scored against all 308 — never against a tab's own
 	// subset. A municipality's score has to mean the same thing whichever tab it's seen on.
 	// `blank` already carries each area's maakunta — it comes from the geometry, not the
 	// statistics, so it's known before the fetch and survives the join untouched.
-	const municipal = join(blank.finland.areas, rateOf, populationChangeOf);
+	const municipal = join(blank.finland.areas, {
+		rate: rateOf,
+		change: populationChangeOf,
+		income: incomeOf
+	});
 	const municipalScores = scoreAreas(municipal, INDICATORS);
 	const scoredMunicipal = municipal.map((area) => ({
 		...area,
@@ -616,22 +758,24 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 	}));
 	const byCode = new Map(scoredMunicipal.map((area) => [area.code, area]));
 
-	// The Region tab: 12r5 publishes its own MK rows, but 121w has none, so the population
-	// figure is rolled up from each region's municipalities (the grouping `membership.ts`
-	// derived at build time). Regions are ranked against the other 18, not against the 308 —
+	// The Region tab: 12r5 and 14ww both publish their own MK rows, but 121w has none, so only
+	// the population figure is rolled up from each region's municipalities (the grouping
+	// `membership.ts` derived at build time). Income *could not* be rolled up in any case — a
+	// median isn't additive, which is why reading the published row matters here rather than
+	// merely being convenient. Regions are ranked against the other 18, not against the 308 —
 	// they're a different kind of area, and the Sources popover says so.
-	const regionAreas = join(
-		blank.maakunta.areas,
-		(code) => registerRegions?.stats.get(code)?.rate ?? null,
-		(code) => {
+	const regionAreas = join(blank.maakunta.areas, {
+		rate: (code) => registerRegions?.stats.get(code)?.rate ?? null,
+		change: (code) => {
 			const members = geometry.membersOf[code] ?? [];
 			const stats = aggregatePopulationStats(
 				members.map((member) => population?.stats.get(member) ?? EMPTY_POPULATION_STATS)
 			);
 
 			return changePer1000(stats.totalChange, stats.population);
-		}
-	);
+		},
+		income: (code) => incomeRegions?.stats.get(code)?.medianIncome ?? null
+	});
 	const regionScores = scoreAreas(regionAreas, INDICATORS);
 	const scoredRegions = regionAreas.map((area) => ({
 		...area,
@@ -641,10 +785,13 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 	const common = {
 		period: register?.period ?? '',
 		populationPeriod: population?.period ?? '',
+		incomePeriod: income?.period ?? '',
 		polled: polledFor(manifest, FILES.unemployment),
 		populationPolled: polledFor(manifest, FILES.population),
+		incomePolled: polledFor(manifest, FILES.income),
 		source: register?.source ?? '',
-		populationSource: population?.source ?? ''
+		populationSource: population?.source ?? '',
+		incomeSource: income?.source ?? ''
 	};
 
 	return {
@@ -666,6 +813,7 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 							...area,
 							rate: scored.rate,
 							change: scored.change,
+							income: scored.income,
 							score: scored.score,
 							regionName: scored.regionName
 						}

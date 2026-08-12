@@ -23,9 +23,12 @@
 
 	onMount(async () => {
 		loaded = await loadCompareViews(data);
-		// Both tables feed the score, so either one missing leaves the map blank — the period
-		// is the signal that the register file at least arrived.
-		failed = loaded.finland.period === '' || loaded.finland.populationPeriod === '';
+		// Every table feeds the score, and `MIN_COVERAGE` means one missing file leaves the whole
+		// map unscored — so any empty period is the signal to say so rather than show a blank map.
+		failed =
+			loaded.finland.period === '' ||
+			loaded.finland.populationPeriod === '' ||
+			loaded.finland.incomePeriod === '';
 	});
 
 	let region = $state<RegionId>('finland');
@@ -33,13 +36,18 @@
 		region === 'finland' ? views.finland : region === 'maakunta' ? views.maakunta : views.tampere
 	);
 
-	// The two tables are released on different cycles, so the shell's one-period line is given
-	// both rather than quoting whichever happens to come first.
-	const periodLabel = $derived(
-		view.period && view.populationPeriod
-			? `${formatPeriod(view.period)} & ${formatPeriod(view.populationPeriod)}`
-			: undefined
-	);
+	// The tables are released on independent cycles, so the shell's one-period line is given all
+	// of them rather than quoting whichever happens to come first. Deduplicated, because two
+	// annual tables landing on the same year should read as one date, not a repetition.
+	const periodLabel = $derived.by(() => {
+		const periods = [view.period, view.populationPeriod, view.incomePeriod];
+
+		if (periods.some((p) => !p)) return undefined;
+
+		const unique = [...new Set(periods.map(formatPeriod))];
+
+		return unique.length > 1 ? `${unique.slice(0, -1).join(', ')} & ${unique.at(-1)}` : unique[0];
+	});
 
 	const shellViews = $derived({
 		finland: { ...views.finland, periodLabel },
@@ -280,10 +288,13 @@
 
 				<dt class="font-semibold">People</dt>
 				<dd>Population change per 1 000 — higher is better</dd>
+
+				<dt class="font-semibold">Income</dt>
+				<dd>Median disposable income per consumption unit — higher is better</dd>
 			</dl>
 			<p class="mt-1 text-base-content/60">
-				Equal weights. Education, economy and housing are intended to join them; each is one more
-				indicator in the same mean.
+				Equal weights. Education and housing are intended to join them; each is one more indicator
+				in the same mean.
 			</p>
 		</section>
 
@@ -296,9 +307,9 @@
 				<p>
 					Regions are ranked against the other 18, not against the 308 municipalities — a percentile
 					only means something within one set of areas. A region's score and a municipality's are
-					not on the same scale. The regional unemployment rate is the employment service's own
-					published figure; the population change is summed from the region's municipalities, which
-					the export doesn't publish.
+					not on the same scale. The regional unemployment rate and median income are both their
+					publishers' own figures; only the population change is summed from the region's
+					municipalities, which that export doesn't publish.
 				</p>
 			</section>
 		{/if}
@@ -316,6 +327,13 @@
 					view.populationSource && `${view.populationSource} (PxWeb 121w)`,
 					view.populationPeriod && formatPeriod(view.populationPeriod),
 					view.populationPolled && `polled ${formatDate(view.populationPolled)}`
+				)}
+			</p>
+			<p class="mt-1">
+				{sourceLine(
+					view.incomeSource && `${view.incomeSource} (PxWeb 14ww)`,
+					view.incomePeriod && formatPeriod(view.incomePeriod),
+					view.incomePolled && `polled ${formatDate(view.incomePolled)}`
 				)}
 			</p>
 			<p class="mt-1">Boundaries · Maanmittauslaitos</p>

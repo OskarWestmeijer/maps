@@ -3,19 +3,24 @@ import register from '../../../static/data/unemployment_register_kunnat_12r5.jso
 import software from '../../../static/data/software_occupations_register_kunnat_12ti.json';
 import survey from '../../../static/data/unemployment_survey_national_135z.json';
 import population from '../../../static/data/population_register_kunnat_121w.json';
+import income from '../../../static/data/income_register_kunnat_14ww.json';
 import {
 	emptyCompareViews,
+	emptyIncomeViews,
 	emptyPopulationViews,
 	emptyUnemploymentViews,
 	loadCompareViews,
+	loadIncomeViews,
 	loadPopulationViews,
 	loadUnemploymentViews,
 	type CompareGeometry,
+	type IncomeGeometry,
 	type PopulationGeometry,
 	type UnemploymentGeometry
 } from './liveData';
 import { EMPTY_KUNTA_STATS } from './unemployment';
 import { EMPTY_POPULATION_STATS } from './population';
+import { EMPTY_INCOME_STATS } from './income';
 import type { FinlandMap, Kunta } from './finland';
 import type { KuntaStats } from './unemployment';
 import type { PopulationStats } from './population';
@@ -48,6 +53,11 @@ const manifest = {
 			period: '2025',
 			updated: '2026-05-27T05:00:00Z',
 			polled: '2026-08-11T18:39:44Z'
+		},
+		'income_register_kunnat_14ww.json': {
+			period: '2024',
+			updated: '2025-12-16T06:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
 		}
 	}
 };
@@ -57,6 +67,7 @@ const DATA_DIR: Record<string, unknown> = {
 	'software_occupations_register_kunnat_12ti.json': software,
 	'unemployment_survey_national_135z.json': survey,
 	'population_register_kunnat_121w.json': population,
+	'income_register_kunnat_14ww.json': income,
 	'manifest.json': manifest
 };
 
@@ -314,6 +325,81 @@ describe('loadPopulationViews', () => {
 	});
 });
 
+const incomeGeometry: IncomeGeometry = {
+	finland: map([
+		area('091', 'Helsinki', EMPTY_INCOME_STATS),
+		area('837', 'Tampere', EMPTY_INCOME_STATS),
+		area('536', 'Nokia', EMPTY_INCOME_STATS)
+	]),
+	maakunta: map([area('06', 'Pirkanmaa', EMPTY_INCOME_STATS)]),
+	tampere: map([
+		area('837', 'Tampere', EMPTY_INCOME_STATS),
+		area('536', 'Nokia', EMPTY_INCOME_STATS)
+	]),
+	membersOf: { '06': ['837', '536'] }
+};
+
+describe('loadIncomeViews', () => {
+	it('joins the published municipal medians onto the shapes', async () => {
+		const views = await loadIncomeViews(incomeGeometry);
+		const tampere = views.finland.areas.find((a) => a.code === '837');
+
+		expect(tampere?.medianIncome).toBeGreaterThan(0);
+		expect(tampere?.gini).toBeGreaterThan(0);
+		expect(tampere?.householdPopulation).toBeGreaterThan(0);
+		expect(views.finland.period).toBe('2024');
+	});
+
+	it('names each municipality’s maakunta under the panel heading', async () => {
+		const views = await loadIncomeViews(incomeGeometry);
+
+		expect(views.finland.areas.find((a) => a.code === '837')?.regionName).toBe('Pirkanmaa');
+	});
+
+	it('reads the Region tab from the export’s own MK rows', async () => {
+		// Not a roll-up, and it can't be one: a median isn't additive. The published figure need
+		// not sit between its members', which is the tell that it wasn't derived.
+		const views = await loadIncomeViews(incomeGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+		const contents = income.columns.filter((c) => c.type === 'c').map((c) => c.code);
+		const published = income.data.find((r) => r.key[0] === 'MK06');
+
+		expect(pirkanmaa?.medianIncome).toBe(
+			Number(published?.values[contents.indexOf('tjt-ekvikturaha_med')])
+		);
+	});
+
+	it('gives the whole country a headline but the metro none', async () => {
+		const views = await loadIncomeViews(incomeGeometry);
+
+		// The Region tab is the same country at a coarser granularity, so it keeps the national
+		// headline. Tampere Metro is a genuinely smaller area with no published row — and no
+		// way to derive one — so it has no headline at all rather than an averaged stand-in.
+		expect(views.finland.total?.medianIncome).toBeGreaterThan(0);
+		expect(views.maakunta.total?.medianIncome).toBe(views.finland.total?.medianIncome);
+		expect(views.tampere.total).toBeNull();
+		// Its municipalities still carry their own published figures.
+		expect(views.tampere.areas.every((a) => a.medianIncome !== null)).toBe(true);
+	});
+
+	it('carries the national median on every tab, so colours don’t move', async () => {
+		const views = await loadIncomeViews(incomeGeometry);
+
+		expect(views.tampere.countryMedian).toBe(views.finland.countryMedian);
+		expect(views.maakunta.countryMedian).toBe(views.finland.countryMedian);
+	});
+
+	it('falls back to empty views when the export is missing', async () => {
+		install({ 'income_register_kunnat_14ww.json': new Response('', { status: 404 }) });
+
+		const views = await loadIncomeViews(incomeGeometry);
+
+		expect(views.finland.period).toBe('');
+		expect(views.finland.areas.every((a) => a.medianIncome === null)).toBe(true);
+		expect(views.finland.areas).toHaveLength(3);
+	});
+});
+
 /**
  * Föglö is in this fixture on purpose: its unemployment rate is suppressed in the real 12r5
  * export (four Åland municipalities are), which is exactly the case the coverage floor exists
@@ -335,15 +421,16 @@ const compareGeometry: CompareGeometry = {
 };
 
 describe('loadCompareViews', () => {
-	it('joins both tables onto one area and scores it', async () => {
+	it('joins every table onto one area and scores it', async () => {
 		const views = await loadCompareViews(compareGeometry);
 		const tampere = views.finland.areas.find((a) => a.code === '837');
 
-		// One figure from each export, and a score built from both.
+		// One figure from each export, and a score built from all of them.
 		expect(tampere?.rate).toBeGreaterThan(0);
 		expect(tampere?.change).not.toBeNull();
+		expect(tampere?.income).toBeGreaterThan(0);
 		expect(tampere?.score.score).toBeGreaterThanOrEqual(0);
-		expect(tampere?.score.parts.map((p) => p.key)).toEqual(['jobs', 'people']);
+		expect(tampere?.score.parts.map((p) => p.key)).toEqual(['jobs', 'people', 'income']);
 	});
 
 	it('names each municipality’s maakunta, for the ranking’s region column', async () => {
@@ -402,6 +489,20 @@ describe('loadCompareViews', () => {
 		expect(metro?.score.ranked).toBe(national?.score.ranked);
 	});
 
+	it('reads the region income from the export rather than deriving it', async () => {
+		// The load-bearing one: a median is not additive, so unlike population change this
+		// figure *cannot* be rolled up from the region's municipalities. It has to be 14ww's
+		// own MK row, which means it need not sit between its members' values.
+		const views = await loadCompareViews(compareGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+		const municipal = income.data.find((r) => r.key[0] === 'MK06');
+		const contents = income.columns.filter((c) => c.type === 'c').map((c) => c.code);
+
+		expect(pirkanmaa?.income).toBe(
+			Number(municipal?.values[contents.indexOf('tjt-ekvikturaha_med')])
+		);
+	});
+
 	it('takes the region rate from the export and rolls its population change up', async () => {
 		const views = await loadCompareViews(compareGeometry);
 		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
@@ -417,23 +518,42 @@ describe('loadCompareViews', () => {
 		expect(pirkanmaa?.change).toBeLessThan(Math.max(...changes));
 	});
 
-	it('carries both periods, since the two tables are on different cycles', async () => {
+	it('carries every period, since the tables are on independent cycles', async () => {
 		const views = await loadCompareViews(compareGeometry);
 
 		expect(views.finland.period).toBe('2026M06');
 		expect(views.finland.populationPeriod).toBe('2025');
-		expect(views.finland.period).not.toBe(views.finland.populationPeriod);
+		expect(views.finland.incomePeriod).toBe('2024');
+		expect(new Set([views.finland.populationPeriod, views.finland.incomePeriod]).size).toBe(2);
 	});
 
-	it('scores nothing when one of the two files is missing', async () => {
-		// Half the indicators is below the coverage floor for every area, so the map hatches
-		// entirely rather than ranking the country on jobs alone.
+	it('carries the income source and poll date separately from the others', async () => {
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.incomeSource).toMatch(/Tilastokeskus/);
+		expect(views.finland.incomePolled).toBe('2026-08-11T18:39:44Z');
+	});
+
+	it('scores nothing when any one of the files is missing', async () => {
+		// Below the coverage floor for every area, so the map hatches entirely rather than
+		// ranking the country on the indicators that happen to have arrived.
 		install({ 'population_register_kunnat_121w.json': new Response('', { status: 404 }) });
 
 		const views = await loadCompareViews(compareGeometry);
 
 		expect(views.finland.areas.every((a) => a.score.score === null)).toBe(true);
 		expect(views.finland.areas.find((a) => a.code === '837')?.rate).toBeGreaterThan(0);
+	});
+
+	it('scores nothing when the income file is missing either', async () => {
+		install({ 'income_register_kunnat_14ww.json': new Response('', { status: 404 }) });
+
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.areas.every((a) => a.score.score === null)).toBe(true);
+		expect(views.finland.areas.every((a) => a.income === null)).toBe(true);
+		// The other two still arrive — one missing file degrades its own figures, not the page.
+		expect(views.finland.areas.find((a) => a.code === '837')?.change).not.toBeNull();
 	});
 });
 
@@ -462,7 +582,20 @@ describe('the pre-fetch state', () => {
 
 		expect(views.finland.areas).toHaveLength(4);
 		expect(views.finland.areas.every((a) => a.score.score === null)).toBe(true);
-		expect(views.finland.areas[0].score.parts.map((p) => p.label)).toEqual(['Jobs', 'People']);
+		expect(views.finland.areas[0].score.parts.map((p) => p.label)).toEqual([
+			'Jobs',
+			'People',
+			'Income'
+		]);
 		expect(views.finland.areas[0].score.ranked).toBe(0);
+	});
+
+	it('gives the income map a headline shape for the two tabs that can have one', () => {
+		const views = emptyIncomeViews(incomeGeometry);
+
+		expect(views.finland.total?.medianIncome).toBeNull();
+		expect(views.maakunta.total?.medianIncome).toBeNull();
+		// ...and none at all for the metro, before or after the fetch.
+		expect(views.tampere.total).toBeNull();
 	});
 });

@@ -36,7 +36,7 @@ from pathlib import Path
 BASE_URL = "https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin"
 USER_AGENT = "oskarwestmeijer-maps/1.0 (+https://github.com/OskarWestmeijer/maps)"
 
-# PxWeb asks for no more than 30 queries per 10 seconds. We make eight, but be polite anyway.
+# PxWeb asks for no more than 30 queries per 10 seconds. We make ten, but be polite anyway.
 REQUEST_SPACING_SECONDS = 1.0
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 4
@@ -119,6 +119,24 @@ TABLES: tuple[Table, ...] = (
             "luonvalisays",
             "koknetmuutto",
             "kokmuutos",
+        ),
+        content_suffix_match=True,
+        min_rows=300,
+    ),
+    Table(
+        name="income",
+        path="tjt/14ww.px",
+        filename="income_register_kunnat_14ww.json",
+        # Suffix-matched like the population table: this export mixes prefixed column codes
+        # (`tjt-ekvikturaha_med`, `tjt-henkiloita`) with unprefixed ones (`gini_kturaha`,
+        # `rpt_aste`), and `income.ts` matches the suffix so a prefix rename doesn't empty
+        # the map. Codes without a "-" are their own suffix, so the two kinds coexist.
+        required_contents=(
+            "ekvikturaha_med",
+            "hkturaha18_med",
+            "gini_kturaha",
+            "rpt_aste",
+            "henkiloita",
         ),
         content_suffix_match=True,
         min_rows=300,

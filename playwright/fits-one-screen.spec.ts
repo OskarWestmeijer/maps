@@ -42,7 +42,12 @@ async function expectFitsOneScreen(page: import('@playwright/test').Page) {
 	await expect(page.getByRole('group').filter({ hasText: 'Sources' })).toBeInViewport();
 }
 
-const maps = ['./interactive/unemployment', './interactive/population', './interactive/compare'];
+const maps = [
+	'./interactive/unemployment',
+	'./interactive/population',
+	'./interactive/income',
+	'./interactive/compare'
+];
 
 for (const size of desktops) {
 	for (const map of maps) {

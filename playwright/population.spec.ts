@@ -6,7 +6,7 @@ test('/interactive redirects to the default map', async ({ page }) => {
 	await expect(page).toHaveURL(/\/interactive\/unemployment$/);
 });
 
-test('the map switch moves between the two interactive maps', async ({ page }) => {
+test('the map switch moves between the interactive maps', async ({ page }) => {
 	await page.goto('./interactive/unemployment');
 
 	const nav = page.getByRole('navigation', { name: 'Interactive maps' });

@@ -18,7 +18,8 @@
 		// the registered *rate*, and the population map is last year's *change*, not a headcount.
 		{ href: '/interactive/unemployment', label: 'Unemployment rate', icon: '📉' },
 		{ href: '/interactive/population', label: 'Population change', icon: '🏘️' },
-		// The composite of the two above (and of whatever domains follow), so it sits last.
+		{ href: '/interactive/income', label: 'Median income', icon: '💶' },
+		// The composite of the ones above (and of whatever domains follow), so it sits last.
 		{ href: '/interactive/compare', label: 'Compare', icon: '⚖️' }
 	];
 
