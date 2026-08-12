@@ -37,7 +37,19 @@ export type PopulationStats = {
 	naturalChange: number | null;
 	/** Net of all moves in and out, between municipalities and across the border alike. */
 	netMigration: number | null;
-	/** Natural change plus net migration plus corrections — the period's bottom line. */
+	/**
+	 * Väkiluvun korjaus — register corrections, i.e. people added to or removed from an area's
+	 * population without a birth, death or move being recorded against that period. Not a flow,
+	 * but part of the bottom line: it's what makes `totalChange` differ from the two flows above.
+	 * Nonzero for 220 of the 308 municipalities in 2025, and −946 for the country.
+	 */
+	correction: number | null;
+	/**
+	 * Kokonaismuutos — natural change plus net migration plus `correction`, the period's bottom
+	 * line and the figure the map is drawn from. Tilastokeskus's own published total, which is
+	 * why it isn't recomputed from the flows: this is the number that reconciles the population
+	 * stock from one year-end to the next.
+	 */
 	totalChange: number | null;
 };
 
@@ -47,6 +59,7 @@ export const EMPTY_POPULATION_STATS: PopulationStats = {
 	deaths: null,
 	naturalChange: null,
 	netMigration: null,
+	correction: null,
 	totalChange: null
 };
 
@@ -74,6 +87,7 @@ const COLUMNS = {
 	deaths: 'vm11',
 	naturalChange: 'luonvalisays',
 	netMigration: 'koknetmuutto',
+	correction: 'vakorjaus',
 	totalChange: 'kokmuutos'
 } as const;
 

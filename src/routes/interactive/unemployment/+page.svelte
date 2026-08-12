@@ -84,7 +84,13 @@
 			only the name, and where the numbers come from, differ.
 		-->
 		{@const panelName = displayed?.name ?? regionLabel}
-		{@const panelRate = displayed?.rate ?? view.national.rate}
+		<!--
+			Fall back to the national figures only when *nothing* is hovered/selected. An area whose
+			figures are suppressed (the Åland municipalities, `'...'` in the export) has real nulls,
+			and `?? view.national.rate` would then show the whole country's numbers under its name —
+			so once `displayed` is set, its own nulls stand and render as em dashes.
+		-->
+		{@const panelRate = displayed ? displayed.rate : view.national.rate}
 		{@const softwareStats = displayed
 			? (view.softwareJobs.stats.get(displayed.code) ?? null)
 			: view.softwareJobs.national}
@@ -131,9 +137,12 @@
 		<div class="mt-4 border-t border-base-300 pt-2">
 			<StatRow
 				label="Unemployed"
-				value={count(displayed?.unemployed ?? view.national.unemployed)}
+				value={count(displayed ? displayed.unemployed : view.national.unemployed)}
 			/>
-			<StatRow label="Vacancies" value={count(displayed?.vacancies ?? view.national.vacancies)} />
+			<StatRow
+				label="Vacancies"
+				value={count(displayed ? displayed.vacancies : view.national.vacancies)}
+			/>
 		</div>
 
 		<!--

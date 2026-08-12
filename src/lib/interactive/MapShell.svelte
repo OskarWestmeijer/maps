@@ -302,7 +302,12 @@
 		</div>
 
 		<div class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
-			<div class="min-h-60 p-5">
+			<!--
+				Slightly tighter padding from `lg` up, where the panel has to share one viewport with
+				the map (see `fits-one-screen.spec.ts`) — below that the page scrolls anyway, so it
+				keeps the roomier inset.
+			-->
+			<div class="min-h-60 p-5 lg:p-4">
 				{@render panel({ displayed, region, areaNoun, regionLabel })}
 			</div>
 		</div>

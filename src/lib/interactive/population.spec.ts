@@ -15,7 +15,7 @@ import { DIVERGING_SCALE, NO_DATA_COLOR, type PxWebExport } from './unemployment
 /**
  * Shaped like the annual export (121w) the map ships: `[year, area]` keys and `ssaaty-`
  * prefixed columns, interleaved so the content columns are not in the order the code reads
- * them — the real file carries 21 of them around the six that are used.
+ * them — the real file carries 21 of them around the seven that are used.
  */
 const px: PxWebExport = {
 	columns: [
@@ -26,24 +26,25 @@ const px: PxWebExport = {
 		{ code: 'ssaaty-luonvalisays', text: 'Luonnollinen väestönlisäys', type: 'c' },
 		{ code: 'ssaaty-vm44', text: 'Kunnan sisäinen muutto', type: 'c' },
 		{ code: 'ssaaty-koknetmuutto', text: 'Kokonaisnettomuutto', type: 'c' },
+		{ code: 'ssaaty-vakorjaus', text: 'Väkiluvun korjaus', type: 'c' },
 		{ code: 'ssaaty-kokmuutos', text: 'Kokonaismuutos', type: 'c' },
 		{ code: 'ssaaty-vaesto', text: 'Väkiluku', type: 'c' }
 	],
 	data: [
 		{
 			key: ['2025', 'SSS'],
-			values: ['45832', '59209', '-13377', '584612', '31233', '16910', '5652881']
+			values: ['45832', '59209', '-13377', '584612', '31233', '-946', '16910', '5652881']
 		},
 		{
 			key: ['2025', 'KU091'],
-			values: ['6300', '4995', '1305', '60000', '9254', '10374', '694392']
+			values: ['6300', '4995', '1305', '60000', '9254', '-185', '10374', '694392']
 		},
-		{ key: ['2025', 'KU742'], values: ['3', '18', '-15', '30', '-40', '-55', '954'] },
+		{ key: ['2025', 'KU742'], values: ['3', '18', '-15', '30', '-40', '0', '-55', '954'] },
 		// A suppressed cell must stay null rather than becoming 0.
-		{ key: ['2025', 'KU060'], values: ['...', '11', '...', '44', '22', '11', '1300'] },
+		{ key: ['2025', 'KU060'], values: ['...', '11', '...', '44', '22', '0', '11', '1300'] },
 		// Neither the "unknown municipality" bucket nor any non-KU level belongs on the map.
-		{ key: ['2025', 'KUJOU'], values: ['1', '1', '0', '0', '0', '0', '50'] },
-		{ key: ['2025', 'MK01'], values: ['900', '800', '100', '9000', '500', '600', '1799629'] }
+		{ key: ['2025', 'KUJOU'], values: ['1', '1', '0', '0', '0', '0', '0', '50'] },
+		{ key: ['2025', 'MK01'], values: ['900', '800', '100', '9000', '500', '0', '600', '1799629'] }
 	],
 	metadata: [{ source: 'Tilastokeskus, siviilisäädyn muutokset' }]
 };
@@ -58,6 +59,7 @@ describe('toPopulationData', () => {
 			deaths: 4995,
 			naturalChange: 1305,
 			netMigration: 9254,
+			correction: -185,
 			totalChange: 10374
 		});
 	});
@@ -74,17 +76,33 @@ describe('toPopulationData', () => {
 				{ code: 'kuol-luonvalisays', text: 'Luonnollinen väestönlisäys', type: 'c' },
 				{ code: 'kuol-vm44', text: 'Kunnan sisäinen muutto', type: 'c' },
 				{ code: 'kuol-koknetmuutto', text: 'Kokonaisnettomuutto', type: 'c' },
+				{ code: 'kuol-vakorjaus', text: 'Väkiluvun korjaus', type: 'c' },
 				{ code: 'kuol-kokmuutos', text: 'Kokonaismuutos', type: 'c' },
 				{ code: 'kuol-vaesto', text: 'Väkiluku', type: 'c' }
 			],
 			data: [
-				{ key: ['KU091', '2025M12'], values: ['550', '516', '34', '6000', '823', '672', '694392'] }
+				{
+					key: ['KU091', '2025M12'],
+					values: ['550', '516', '34', '6000', '823', '-185', '672', '694392']
+				}
 			]
 		});
 
 		expect(monthly.period).toBe('2025M12');
 		expect(monthly.stats.get('091')?.population).toBe(694392);
 		expect(monthly.stats.get('091')?.naturalChange).toBe(34);
+	});
+
+	it('carries the register correction, without which the flows do not add up to the total', () => {
+		// Kokonaismuutos is *not* natural change plus net migration: Väkiluvun korjaus is the
+		// third term. Reading it is what lets the panel show three rows that sum to the headline
+		// instead of two that visibly do not.
+		const helsinki = result.stats.get('091')!;
+
+		expect(helsinki.naturalChange! + helsinki.netMigration! + helsinki.correction!).toBe(
+			helsinki.totalChange
+		);
+		expect(result.national.correction).toBe(-946);
 	});
 
 	it('keys municipalities by natcode so they join the map GeoJSON', () => {
@@ -119,6 +137,7 @@ describe('aggregatePopulationStats', () => {
 		deaths: 4995,
 		naturalChange: 1305,
 		netMigration: 9254,
+		correction: -185,
 		totalChange: 10374
 	};
 	const b: PopulationStats = {
@@ -127,6 +146,7 @@ describe('aggregatePopulationStats', () => {
 		deaths: 18,
 		naturalChange: -15,
 		netMigration: -40,
+		correction: 0,
 		totalChange: -55
 	};
 
@@ -137,6 +157,7 @@ describe('aggregatePopulationStats', () => {
 			deaths: 5013,
 			naturalChange: 1290,
 			netMigration: 9214,
+			correction: -185,
 			totalChange: 10319
 		});
 	});
@@ -156,6 +177,7 @@ describe('aggregatePopulationStats', () => {
 			deaths: null,
 			naturalChange: null,
 			netMigration: null,
+			correction: null,
 			totalChange: null
 		};
 

@@ -116,7 +116,7 @@
 			</p>
 		{/if}
 
-		<p class="stat-label mt-4">Population change</p>
+		<p class="stat-label mt-3">Population change</p>
 		<p class="display-wide mt-0.5 text-5xl leading-none font-bold">
 			{area.change === null ? 'no data' : signedDecimal(area.change)}
 		</p>
@@ -141,7 +141,7 @@
 			</p>
 		{/if}
 
-		<div class="mt-4 border-t border-base-300 pt-2">
+		<div class="mt-3 border-t border-base-300 pt-2">
 			<StatRow label="Net change" value={`${signed(area.totalChange)} people`} />
 			<StatRow
 				label="vs Finland"
@@ -154,17 +154,26 @@
 		</div>
 
 		<!--
-			The two flows the headline is the sum of: whether an area's change came from births
-			and deaths or from people moving. Nationally these point opposite ways — natural
+			The parts the headline is the sum of: whether an area's change came from births and
+			deaths or from people moving. Nationally the two flows point opposite ways — natural
 			change −13 377 against net migration +31 233 — which is the whole story of the map.
+
+			The third part is not a flow: Väkiluvun korjaus, people added to or removed from the
+			register without a birth, death or move behind it. Without it these rows visibly fail
+			to add up to Net change (Föglö: −5 and +11 against a headline +10), so it's shown —
+			but only where it's nonzero, which spares the 88 municipalities that have none a row
+			of "±0".
 		-->
-		<div class="mt-4 border-t border-base-300 pt-3">
+		<div class="mt-3 border-t border-base-300 pt-2">
 			<p class="stat-label mb-1">What moved it</p>
 			<StatRow label="Natural change" value={signed(area.naturalChange)} />
 			<StatRow label="Net migration" value={signed(area.netMigration)} />
+			{#if area.correction}
+				<StatRow label="Register correction" value={signed(area.correction)} />
+			{/if}
 		</div>
 
-		<div class="mt-4 border-t border-base-300 pt-3">
+		<div class="mt-3 border-t border-base-300 pt-2">
 			<StatRow label="Population" value={count(area.population)} />
 			<StatRow
 				label="Density"
@@ -184,6 +193,11 @@
 				Population at the end of the year, from the population information system, plus that year's
 				births, deaths and moves. The map shows it as density — inhabitants per km² of
 				<em>land</em>, so a {areaNoun} isn't diluted by the lakes and sea inside its boundary.
+			</p>
+			<p class="mt-1">
+				Net change is Tilastokeskus's Kokonaismuutos, which is the two flows plus Väkiluvun korjaus
+				— register corrections with no birth, death or move behind them. That row appears in the
+				panel whenever it isn't zero, so the parts always add up to the total.
 			</p>
 			<p class="mt-1 text-base-content/60">
 				{sourceLine(
