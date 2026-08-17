@@ -190,6 +190,36 @@ TABLES: tuple[Table, ...] = (
         omit=(("15-19", "20-24"), ("1", "2")),
     ),
     Table(
+        name="age",
+        path="vaerak/11ra.px",
+        filename="age_register_kunnat_11ra.json",
+        # Suffix-matched, because this export mixes the two forms in one file again:
+        # `vaerak-vaesto` carries the statistic's prefix, `vaesto_keski_ika` doesn't.
+        required_contents=(
+            "vaesto_keski_ika",
+            "vaesto_alle15_p",
+            "vaesto_yli64_p",
+            "vaesto",
+        ),
+        content_suffix_match=True,
+        min_rows=300,
+        # 568 rows: SSS plus sixteen area levels, of which only KU and MK are ever drawn.
+        max_rows=1000,
+        # 11ra is a key-figures table — 43 measures, of which the map needs four. Narrowed by
+        # marker like 12ti's occupations, rather than omitted like 12bs's breakdowns: this is a
+        # content variable, so there is no total to fall back to, and `all` would quadruple the
+        # file for columns nothing reads. The population is here as the weight the Tampere Metro
+        # roll-up needs, not to be shown.
+        select={
+            "vaesto_keski_ika": [
+                "vaesto_keski_ika",
+                "vaesto_alle15_p",
+                "vaesto_yli64_p",
+                "vaerak-vaesto",
+            ]
+        },
+    ),
+    Table(
         name="survey",
         path="tyti/135z.px",
         filename="unemployment_survey_national_135z.json",

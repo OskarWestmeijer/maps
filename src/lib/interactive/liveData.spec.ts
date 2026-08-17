@@ -5,17 +5,21 @@ import survey from '../../../static/data/unemployment_survey_national_135z.json'
 import population from '../../../static/data/population_register_kunnat_121w.json';
 import income from '../../../static/data/income_register_kunnat_14ww.json';
 import education from '../../../static/data/education_register_kunnat_12bs.json';
+import age from '../../../static/data/age_register_kunnat_11ra.json';
 import {
+	emptyAgeViews,
 	emptyCompareViews,
 	emptyEducationViews,
 	emptyIncomeViews,
 	emptyPopulationViews,
 	emptyUnemploymentViews,
+	loadAgeViews,
 	loadCompareViews,
 	loadEducationViews,
 	loadIncomeViews,
 	loadPopulationViews,
 	loadUnemploymentViews,
+	type AgeGeometry,
 	type CompareGeometry,
 	type EducationGeometry,
 	type IncomeGeometry,
@@ -26,6 +30,7 @@ import { EMPTY_KUNTA_STATS } from './unemployment';
 import { EMPTY_POPULATION_STATS } from './population';
 import { EMPTY_INCOME_STATS } from './income';
 import { EMPTY_EDUCATION_STATS } from './education';
+import { EMPTY_AGE_STATS } from './age';
 import type { FinlandMap, Kunta } from './finland';
 import type { KuntaStats } from './unemployment';
 import type { PopulationStats } from './population';
@@ -68,6 +73,11 @@ const manifest = {
 			period: '2025',
 			updated: '2026-06-18T05:00:00Z',
 			polled: '2026-08-11T18:39:44Z'
+		},
+		'age_register_kunnat_11ra.json': {
+			period: '2025',
+			updated: '2026-05-29T05:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
 		}
 	}
 };
@@ -79,6 +89,7 @@ const DATA_DIR: Record<string, unknown> = {
 	'population_register_kunnat_121w.json': population,
 	'income_register_kunnat_14ww.json': income,
 	'education_register_kunnat_12bs.json': education,
+	'age_register_kunnat_11ra.json': age,
 	'manifest.json': manifest
 };
 
@@ -511,6 +522,72 @@ describe('loadEducationViews', () => {
 	});
 });
 
+const ageGeometry: AgeGeometry = {
+	finland: map([
+		area('091', 'Helsinki', EMPTY_AGE_STATS),
+		area('837', 'Tampere', EMPTY_AGE_STATS),
+		area('536', 'Nokia', EMPTY_AGE_STATS)
+	]),
+	maakunta: map([area('06', 'Pirkanmaa', EMPTY_AGE_STATS)]),
+	tampere: map([area('837', 'Tampere', EMPTY_AGE_STATS), area('536', 'Nokia', EMPTY_AGE_STATS)]),
+	membersOf: { '06': ['837', '536'] }
+};
+
+describe('loadAgeViews', () => {
+	it('joins the published mean ages onto the shapes', async () => {
+		const views = await loadAgeViews(ageGeometry);
+		const tampere = views.finland.areas.find((a) => a.code === '837');
+
+		expect(tampere?.averageAge).toBeGreaterThan(0);
+		expect(tampere?.underFifteen).toBeGreaterThan(0);
+		expect(views.finland.period).toBe('2025');
+	});
+
+	it('reads the Region tab from the export’s own MK rows', async () => {
+		const views = await loadAgeViews(ageGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+		const contents = age.columns.filter((c) => c.type === 'c').map((c) => c.code);
+		const published = age.data.find((r) => r.key[0] === 'MK06');
+
+		expect(pirkanmaa?.averageAge).toBe(
+			Number(published?.values[contents.indexOf('vaesto_keski_ika')])
+		);
+	});
+
+	it('weights the metro roll-up by population', async () => {
+		// Between its two members rather than the midpoint of them, because Tampere is far bigger
+		// than Nokia — the property that separates a weighted mean from an averaged one.
+		const views = await loadAgeViews(ageGeometry);
+		const ages = views.tampere.areas.map((a) => a.averageAge as number);
+		const total = views.tampere.total.averageAge as number;
+		const unweighted = (ages[0] + ages[1]) / 2;
+
+		expect(total).toBeGreaterThan(Math.min(...ages));
+		expect(total).toBeLessThan(Math.max(...ages));
+		expect(total).not.toBeCloseTo(unweighted, 2);
+	});
+
+	it('pivots on the median municipality, well above the national mean', async () => {
+		// Mirror of the education map: the national figure counts people, young people live in
+		// cities, so most municipalities are older than it.
+		const views = await loadAgeViews(ageGeometry);
+
+		expect(views.finland.medianAge).toBeCloseTo(48.6, 1);
+		expect(views.finland.countryAge).toBeLessThan((views.finland.medianAge as number) - 4);
+		expect(views.tampere.medianAge).toBe(views.finland.medianAge);
+		expect(views.maakunta.medianAge).toBe(views.finland.medianAge);
+	});
+
+	it('falls back to empty views when the export is missing', async () => {
+		install({ 'age_register_kunnat_11ra.json': new Response('', { status: 404 }) });
+
+		const views = await loadAgeViews(ageGeometry);
+
+		expect(views.finland.period).toBe('');
+		expect(views.finland.areas.every((a) => a.averageAge === null)).toBe(true);
+	});
+});
+
 /**
  * Föglö is in this fixture on purpose: its unemployment rate is suppressed in the real 12r5
  * export (four Åland municipalities are), which is exactly the case the coverage floor exists
@@ -545,7 +622,8 @@ describe('loadCompareViews', () => {
 			'jobs',
 			'people',
 			'income',
-			'education'
+			'education',
+			'age'
 		]);
 	});
 
@@ -735,7 +813,8 @@ describe('the pre-fetch state', () => {
 			'Jobs',
 			'People',
 			'Income',
-			'Education'
+			'Education',
+			'Age'
 		]);
 		expect(views.finland.areas[0].score.ranked).toBe(0);
 	});

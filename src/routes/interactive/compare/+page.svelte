@@ -29,7 +29,8 @@
 			loaded.finland.period === '' ||
 			loaded.finland.populationPeriod === '' ||
 			loaded.finland.incomePeriod === '' ||
-			loaded.finland.educationPeriod === '';
+			loaded.finland.educationPeriod === '' ||
+			loaded.finland.agePeriod === '';
 	});
 
 	let region = $state<RegionId>('finland');
@@ -128,7 +129,7 @@
 			</p>
 		{:else if !displayed}
 			<p class="mt-2 text-sm" style:color="var(--ink-muted)">
-				Jobs, people, income and education, combined into one score per {areaNoun}.
+				Jobs, people, income, education and age, combined into one score per {areaNoun}.
 			</p>
 
 			<!--
@@ -295,9 +296,12 @@
 
 				<dt class="font-semibold">Education</dt>
 				<dd>Share of the 15+ population with a tertiary degree — higher is better</dd>
+
+				<dt class="font-semibold">Age</dt>
+				<dd>Mean age of the population — lower is better</dd>
 			</dl>
 			<p class="mt-1 text-base-content/60">
-				Equal weights. Housing is intended to join them; it is one more indicator in the same mean.
+				Equal weights. Age is the one direction that's a judgement rather than a fact.
 			</p>
 		</section>
 
@@ -310,9 +314,9 @@
 				<p>
 					Regions are ranked against the other 18, not against the 308 municipalities — a percentile
 					only means something within one set of areas. A region's score and a municipality's are
-					not on the same scale. The regional unemployment rate, median income and education share
-					are all their publishers' own figures; only the population change is summed from the
-					region's municipalities, which that export doesn't publish.
+					not on the same scale. Every regional figure but one is its publisher's own; only the
+					population change is summed from the region's municipalities, which that export doesn't
+					publish.
 				</p>
 			</section>
 		{/if}
@@ -344,6 +348,13 @@
 					view.educationSource && `${view.educationSource} (PxWeb 12bs)`,
 					view.educationPeriod && formatPeriod(view.educationPeriod),
 					view.educationPolled && `polled ${formatDate(view.educationPolled)}`
+				)}
+			</p>
+			<p class="mt-1">
+				{sourceLine(
+					view.ageSource && `${view.ageSource} (PxWeb 11ra)`,
+					view.agePeriod && formatPeriod(view.agePeriod),
+					view.agePolled && `polled ${formatDate(view.agePolled)}`
 				)}
 			</p>
 			<p class="mt-1">Boundaries · Maanmittauslaitos</p>

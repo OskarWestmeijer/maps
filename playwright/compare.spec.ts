@@ -32,7 +32,7 @@ test('every municipality is drawn and the ends of the ranking are offered', asyn
 	// Five each way, ranked from the outside in: 1..5 and 304..300.
 	await expect(panel.getByRole('button', { name: /^\d+ / })).toHaveCount(10);
 	await expect(panel.getByRole('button', { name: /^2 Sipoo/ })).toBeVisible();
-	await expect(panel.getByRole('button', { name: /^301 Ilomantsi/ })).toBeVisible();
+	await expect(panel.getByRole('button', { name: /^302 Ilomantsi/ })).toBeVisible();
 
 	// Each row names the municipality's maakunta, which is most of what the two ends have to
 	// say — the bottom is Karjala almost throughout.
@@ -50,13 +50,13 @@ test('the panel shows the score, its rank, and the figures behind it', async ({ 
 	const panel = page.getByRole('complementary');
 
 	// Pirkkala: 9,5 % unemployment (62nd percentile — lower is better), +15,5 per 1 000 (98th),
-	// 34 886 € (96th) and 44,6 % with a degree (99th), so a score of 88,8 and 10th of the 304
-	// scored municipalities.
+	// 34 886 € (96th), 44,6 % with a degree (99th) and a mean age of 41,3 (94th, lower being
+	// better), so a score of 89,9 and 4th of the 304 scored municipalities.
 	await page.getByRole('button', { name: /^Pirkkala,/ }).hover();
 
 	await expect(panel.getByRole('heading', { name: 'Pirkkala' })).toBeVisible();
-	await expect(panel.getByText('88,8', { exact: true })).toBeVisible();
-	await expect(panel.getByText('rank 10 of 304')).toBeVisible();
+	await expect(panel.getByText('89,9', { exact: true })).toBeVisible();
+	await expect(panel.getByText('rank 4 of 304')).toBeVisible();
 	await expect(panel.getByText('well above average', { exact: true })).toBeVisible();
 	// The maakunta, on every hover — 308 municipality names are not something anyone holds in
 	// their head, and it's the region that locates an unfamiliar one.
@@ -69,6 +69,7 @@ test('the panel shows the score, its rank, and the figures behind it', async ({ 
 	await expect(panel.getByRole('row', { name: 'People +15,5 per 1 000 98' })).toBeVisible();
 	await expect(panel.getByRole('row', { name: 'Income 34 886 € 96' })).toBeVisible();
 	await expect(panel.getByRole('row', { name: 'Education 44,6 % 99' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Age 41,3 yrs 94' })).toBeVisible();
 });
 
 test('a municipality missing an indicator is left unscored, not scored on the rest', async ({
@@ -90,6 +91,7 @@ test('a municipality missing an indicator is left unscored, not scored on the re
 	await expect(panel.getByRole('row', { name: 'People +19,5 per 1 000 99' })).toBeVisible();
 	await expect(panel.getByRole('row', { name: 'Income 33 411 € 91' })).toBeVisible();
 	await expect(panel.getByRole('row', { name: 'Education 19,6 % 12' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Age 48,6 yrs 50' })).toBeVisible();
 	await expect(panel.getByRole('row', { name: 'Jobs no data —' })).toBeVisible();
 	await expect(panel.getByText(/Not scored: Jobs isn't published/)).toBeVisible();
 
@@ -111,11 +113,11 @@ test('municipalities are coloured by where their score sits, diverging around 50
 			fill
 		);
 
-	// The site's shared green/red: Jomala (93,2) takes the deepest green, Rääkkylä (4,2) the
-	// deepest red, and Laitila (50,1) the neutral middle.
+	// The site's shared green/red: Jomala (93,9) takes the deepest green, Rääkkylä (3,4) the
+	// deepest red, and Loviisa (50,1) the neutral middle.
 	await expectFill('Jomala', '#1d6835');
 	await expectFill('Rääkkylä', '#9a2929');
-	await expectFill('Laitila', '#c5cbd2');
+	await expectFill('Loviisa', '#c5cbd2');
 });
 
 test("a municipality's score does not change when the Tampere tab is opened", async ({ page }) => {
@@ -124,7 +126,7 @@ test("a municipality's score does not change when the Tampere tab is opened", as
 	const panel = page.getByRole('complementary');
 
 	await page.getByRole('button', { name: /^Nokia,/ }).hover();
-	await expect(panel.getByText('rank 62 of 304')).toBeVisible();
+	await expect(panel.getByText('rank 51 of 304')).toBeVisible();
 
 	await page.getByRole('tab', { name: 'Tampere Metro' }).click();
 
@@ -134,7 +136,7 @@ test("a municipality's score does not change when the Tampere tab is opened", as
 	// Ranked against all 308, never against the metro's own eight — otherwise the same
 	// municipality would carry two different numbers depending on which tab you arrived from.
 	await page.getByRole('button', { name: /^Nokia,/ }).hover();
-	await expect(panel.getByText('rank 62 of 304')).toBeVisible();
+	await expect(panel.getByText('rank 51 of 304')).toBeVisible();
 });
 
 test('the Tampere tab lists its eight once each, drawn from its own geometry', async ({ page }) => {
