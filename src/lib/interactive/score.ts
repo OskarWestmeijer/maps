@@ -47,6 +47,11 @@ export type ScorePart = {
 	label: string;
 	/** 0–100, or null where this area has no figure for this indicator. */
 	percentile: number | null;
+	/** 1 = best on this indicator alone. Null where the figure is. Competition ranking, so ties
+	 *  share a rank and the next one skips — the same rule the overall `rank` uses. */
+	rank: number | null;
+	/** How many areas have a figure for this indicator — the "of 304" beside `rank`. */
+	ranked: number;
 	value: number | null;
 	/** `value` through the indicator's own formatter. */
 	formatted: string;
@@ -142,6 +147,39 @@ export function percentileRanks(
 }
 
 /**
+ * Position of each value within the array, 1 = best, preserving input order.
+ *
+ * Competition ranking: equal values share a rank and the next one skips, so a rank always answers
+ * "how many areas are ahead of me". Nulls stay null and don't occupy a position.
+ */
+export function competitionRanks(
+	values: (number | null)[],
+	higherIsBetter: boolean
+): { rank: (number | null)[]; ranked: number } {
+	const known = values
+		.map((value, index) => ({ value, index }))
+		.filter((entry): entry is { value: number; index: number } => entry.value !== null);
+
+	// Best first: highest value when more is better, lowest when less is.
+	known.sort((a, b) => (higherIsBetter ? b.value - a.value : a.value - b.value));
+
+	const rank: (number | null)[] = values.map(() => null);
+	let start = 0;
+
+	while (start < known.length) {
+		let end = start;
+
+		while (end + 1 < known.length && known[end + 1].value === known[start].value) end += 1;
+
+		for (let i = start; i <= end; i += 1) rank[known[i].index] = start + 1;
+
+		start = end + 1;
+	}
+
+	return { rank, ranked: known.length };
+}
+
+/**
  * Scores every area against the others in the same list.
  *
  * Returned keyed by area code because callers join it back onto their own area objects, and
@@ -163,6 +201,16 @@ export function scoreAreas<A extends { code: string }>(
 		)
 	);
 
+	// The same columns as positions rather than shares: "116th of 304 on jobs" is the thing a
+	// reader can act on, where a percentile is the thing the score is actually built from. The
+	// panel shows both.
+	const ranks = indicators.map((indicator) =>
+		competitionRanks(
+			areas.map((area) => indicator.valueOf(area)),
+			indicator.higherIsBetter
+		)
+	);
+
 	const scored = areas.map((area, areaIndex) => {
 		const parts: ScorePart[] = indicators.map((indicator, i) => {
 			const value = indicator.valueOf(area);
@@ -171,6 +219,8 @@ export function scoreAreas<A extends { code: string }>(
 				key: indicator.key,
 				label: indicator.label,
 				percentile: percentiles[i][areaIndex],
+				rank: ranks[i].rank[areaIndex],
+				ranked: ranks[i].ranked,
 				value,
 				formatted: indicator.format(value)
 			};
@@ -239,8 +289,7 @@ export function scoreAreas<A extends { code: string }>(
 }
 
 /**
- * A *diverging* scale around 50, reusing the site's shared green/grey/red so the colours mean
- * the same thing here as on the other maps: green is the better direction.
+ * A diverging scale around 50: green is the better direction, as everywhere else on the site.
  *
  * **These bands are applied to `scorePercentile`, not to `score`** — pass the wrong one and the
  * labels start lying. The edges (10 / 25 / 45 / 55 / 75 / 90) are percentile bands, so against a
@@ -251,14 +300,30 @@ export function scoreAreas<A extends { code: string }>(
  *
  * 50 is a true midpoint either way: with percentile inputs it is the middle by construction.
  */
+/**
+ * **A traffic light, not the site's shared `DIVERGING_SCALE`** — green through yellow to red,
+ * where the other maps run green through neutral grey to red.
+ *
+ * The grey midpoint is right on those maps: it marks "at the reference figure", a place where the
+ * measure has nothing to say. Here the midpoint is "middling", which is a verdict rather than an
+ * absence, and yellow is the idiom every reader already knows for it. This is the only map with a
+ * composite verdict on it, so it's the only one that gets the traffic light.
+ *
+ * Magnitude still survives red-green colour blindness, because each arm is monotone in lightness
+ * from the yellow outwards — the property the grey-midpoint scales have too. Both arms pass all
+ * four checks of the `dataviz` skill's `validate_palette.js --ordinal` against `MAP_SURFACE`
+ * (light ends 2,07:1 green and 2,34:1 warm). Re-run per arm if they're re-picked; the yellow is
+ * exempt from the light-end floor for the same reason the shared neutral grey is — a midpoint is
+ * meant to recede.
+ */
 export const SCORE_CLASSES = [
-	{ min: -Infinity, label: 'bottom 10 %', ...DIVERGING_SCALE.red[2] },
-	{ min: 10, label: 'well below average', ...DIVERGING_SCALE.red[1] },
-	{ min: 25, label: 'below average', ...DIVERGING_SCALE.red[0] },
-	{ min: 45, label: 'about average', ...DIVERGING_SCALE.neutral },
-	{ min: 55, label: 'above average', ...DIVERGING_SCALE.green[0] },
-	{ min: 75, label: 'well above average', ...DIVERGING_SCALE.green[1] },
-	{ min: 90, label: 'top 10 %', ...DIVERGING_SCALE.green[2] }
+	{ min: -Infinity, label: 'bottom 10 %', color: '#9a2929', ink: '#ffffff' },
+	{ min: 10, label: 'well below average', color: '#c25e28', ink: '#ffffff' },
+	{ min: 25, label: 'below average', color: '#e2913f', ink: 'var(--map-ink)' },
+	{ min: 45, label: 'about average', color: '#ecd15f', ink: 'var(--map-ink)' },
+	{ min: 55, label: 'above average', color: '#87bd5c', ink: 'var(--map-ink)' },
+	{ min: 75, label: 'well above average', color: '#4f9445', ink: 'var(--map-ink)' },
+	{ min: 90, label: 'top 10 %', color: '#1d6835', ink: '#ffffff' }
 ] as const;
 
 /** Index of the neutral, "about average" class. */

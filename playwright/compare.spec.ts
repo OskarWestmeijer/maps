@@ -68,12 +68,15 @@ test('the panel shows the score, its rank, and the figures behind it', async ({ 
 	// One table row per indicator: the published figure and, in its own column, where that
 	// figure puts the municipality in the distribution. Addressing them as rows is what pins
 	// the columns — the two were once concatenated into a single "9,5 % · 62" cell.
-	await expect(panel.getByRole('row', { name: 'Jobs 9,5 % 62' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'People +15,5 per 1 000 98' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Income 34 886 € 96' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Education 44,6 % 99' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Age 41,3 yrs 94' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Balance 0,2 pts 88' })).toBeVisible();
+	// Four columns: category, figure, its own ranking on that category alone, and the percentile
+	// the score is a mean of. Addressing them as rows is what pins the columns.
+	await expect(panel.getByRole('row', { name: 'Jobs 9,5 % 113/304 62' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Income 34 886 € 13/308 96' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Balance 0,2 pts 39/308 88' })).toBeVisible();
+	// Jobs ranks out of 304, the rest out of 308 — four Åland municipalities publish no rate, and
+	// a category ranks only the areas that have a figure for it, which is why the denominator is
+	// printed per row rather than once in the header.
+	await expect(panel.getByRole('row', { name: 'Education 44,6 % 4/308 99' })).toBeVisible();
 });
 
 test('a municipality missing an indicator is left unscored, not scored on the rest', async ({
@@ -92,12 +95,14 @@ test('a municipality missing an indicator is left unscored, not scored on the re
 	await expect(panel.getByText('unranked of 304')).toBeVisible();
 	// The figure it does have is still shown, with an em dash where the percentile would be,
 	// and the panel says why that isn't enough.
-	await expect(panel.getByRole('row', { name: 'People +19,5 per 1 000 99' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Income 33 411 € 91' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Education 19,6 % 12' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Age 48,6 yrs 50' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Balance 0,6 pts 62' })).toBeVisible();
-	await expect(panel.getByRole('row', { name: 'Jobs no data —' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'People +19,5 ‰ 3/308 99' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Income 33 411 € 29/308 91' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Education 19,6 % 272/308 12' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Age 48,6 yrs 154/308 50' })).toBeVisible();
+	await expect(panel.getByRole('row', { name: 'Balance 0,6 pts 119/308 62' })).toBeVisible();
+	// Two em dashes on the missing category: no rank either, since a rank counts only the areas
+	// that have a figure.
+	await expect(panel.getByRole('row', { name: 'Jobs no data — —' })).toBeVisible();
 	await expect(panel.getByText(/Not scored: Jobs isn't published/)).toBeVisible();
 
 	// And it's hatched on the map like every other area with no figure.
@@ -107,9 +112,7 @@ test('a municipality missing an indicator is left unscored, not scored on the re
 	);
 });
 
-test('municipalities are coloured by where their score sits, diverging around 50', async ({
-	page
-}) => {
+test('municipalities are coloured green through yellow to red by rank', async ({ page }) => {
 	await page.goto('./interactive/compare');
 
 	const expectFill = (name: string, fill: string) =>
@@ -118,11 +121,12 @@ test('municipalities are coloured by where their score sits, diverging around 50
 			fill
 		);
 
-	// The site's shared green/red: Mustasaari (90,0) takes the deepest green, Rääkkylä (4,2) the
-	// deepest red, and Loimaa (49,9) the neutral middle.
+	// A traffic light rather than the site's grey-midpoint scale — this is the one map whose
+	// middle is a verdict ("middling") rather than an absence. Mustasaari (rank 1) takes the
+	// deepest green, Rääkkylä (304th) the deepest red, and Loimaa the yellow middle.
 	await expectFill('Mustasaari', '#1d6835');
 	await expectFill('Rääkkylä', '#9a2929');
-	await expectFill('Loimaa', '#c5cbd2');
+	await expectFill('Loimaa', '#ecd15f');
 });
 
 test("a municipality's score does not change when the Tampere tab is opened", async ({ page }) => {
@@ -182,4 +186,67 @@ test('regions are ranked among themselves, on their own figures', async ({ page 
 	await page.getByRole('button', { name: /^Pirkanmaa,/ }).hover();
 	await expect(panel.getByRole('heading', { name: 'Pirkanmaa' })).toBeVisible();
 	await expect(panel.getByText(/rank \d+ of 19/)).toBeVisible();
+});
+
+test('categories can be switched out of the score', async ({ page }) => {
+	await page.goto('./interactive/compare');
+
+	const panel = page.getByRole('complementary');
+	const toggle = (name: string) => panel.getByRole('button', { name, exact: true });
+
+	// All six on by default — the page means something before anything is configured.
+	for (const name of ['Jobs', 'People', 'Income', 'Education', 'Age', 'Balance']) {
+		await expect(toggle(name)).toHaveAttribute('aria-pressed', 'true');
+	}
+
+	await page.getByRole('button', { name: /^Pirkkala,/ }).hover();
+	await expect(panel.getByRole('row', { name: /^Age / })).toBeVisible();
+	await expect(panel.getByText('rank 4 of 304')).toBeVisible();
+
+	// Switching one off drops its row and rescores everything from the remaining five.
+	await toggle('Age').click();
+
+	await expect(toggle('Age')).toHaveAttribute('aria-pressed', 'false');
+	await page.getByRole('button', { name: /^Pirkkala,/ }).hover();
+	await expect(panel.getByRole('row', { name: /^Age / })).toHaveCount(0);
+	await expect(panel.getByRole('row', { name: /^Jobs / })).toBeVisible();
+	await expect(panel.getByText('rank 4 of 304')).toHaveCount(0);
+
+	// And back.
+	await toggle('Age').click();
+	await page.getByRole('button', { name: /^Pirkkala,/ }).hover();
+	await expect(panel.getByText('rank 4 of 304')).toBeVisible();
+});
+
+test('dropping the unemployment category scores the Åland municipalities', async ({ page }) => {
+	await page.goto('./interactive/compare');
+
+	const panel = page.getByRole('complementary');
+
+	// Föglö is unscored only because its unemployment rate is suppressed. Take that category out
+	// and the coverage floor is satisfied by the five that remain.
+	await page.getByRole('button', { name: /^Föglö,/ }).hover();
+	await expect(panel.getByText('no score', { exact: true })).toBeVisible();
+
+	await panel.getByRole('button', { name: 'Jobs', exact: true }).click();
+
+	await page.getByRole('button', { name: /^Föglö,/ }).hover();
+	await expect(panel.getByText('no score', { exact: true })).toHaveCount(0);
+	await expect(panel.getByText(/rank \d+ of 308/)).toBeVisible();
+});
+
+test('switching every category off empties the score rather than breaking', async ({ page }) => {
+	await page.goto('./interactive/compare');
+
+	const panel = page.getByRole('complementary');
+
+	for (const name of ['Jobs', 'People', 'Income', 'Education', 'Age', 'Balance']) {
+		await panel.getByRole('button', { name, exact: true }).click();
+	}
+
+	await expect(panel.getByText('Nothing to score — switch a category back on.')).toBeVisible();
+	await expect(page.getByRole('button', { name: /^Tampere,/ })).toHaveAttribute(
+		'fill',
+		'url(#no-data)'
+	);
 });

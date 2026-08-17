@@ -972,13 +972,14 @@ export const INDICATORS: Indicator<CompareArea>[] = [
 		key: 'people',
 		label: 'People',
 		valueOf: (area) => area.change,
-		// Always signed, with a real minus — the same shape the population map gives it, and
-		// the sign is the whole point of a change figure. `decimal` alone would render an ASCII
-		// hyphen and no plus.
+		// Always signed, with a real minus — the sign is the whole point of a change figure, and
+		// `decimal` alone would render an ASCII hyphen and no plus. Per-mille rather than the
+		// population map's spelled-out "per 1 000": this one sits in a table column narrow enough
+		// that the words wrapped onto a second line.
 		format: (value) =>
 			value === null
 				? 'no data'
-				: `${value > 0 ? '+' : value < 0 ? '−' : ''}${decimal(Math.abs(value))} per 1 000`,
+				: `${value > 0 ? '+' : value < 0 ? '−' : ''}${decimal(Math.abs(value))} ‰`,
 		higherIsBetter: true,
 		weight: 1
 	},
@@ -1035,6 +1036,8 @@ const EMPTY_SCORE: ScoreBreakdown = {
 		key: indicator.key,
 		label: indicator.label,
 		percentile: null,
+		rank: null,
+		ranked: 0,
 		value: null,
 		formatted: indicator.format(null)
 	})),
@@ -1192,12 +1195,6 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 		age: ageOf,
 		balance: balanceOf
 	});
-	const municipalScores = scoreAreas(municipal, INDICATORS);
-	const scoredMunicipal = municipal.map((area) => ({
-		...area,
-		score: municipalScores.get(area.code) ?? EMPTY_SCORE
-	}));
-	const byCode = new Map(scoredMunicipal.map((area) => [area.code, area]));
 
 	// The Region tab: 12r5, 14ww and 12bs all publish their own MK rows, but 121w has none, so
 	// only the population figure is rolled up from each region's municipalities (the grouping
@@ -1227,11 +1224,6 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 			return imbalance(aggregateBalanceStats(members).womenShare);
 		}
 	});
-	const regionScores = scoreAreas(regionAreas, INDICATORS);
-	const scoredRegions = regionAreas.map((area) => ({
-		...area,
-		score: regionScores.get(area.code) ?? EMPTY_SCORE
-	}));
 
 	const common = {
 		period: register?.period ?? '',
@@ -1254,9 +1246,13 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 		balanceSource: balance?.source ?? ''
 	};
 
-	return {
-		finland: { areas: scoredMunicipal, viewBox: geometry.finland.viewBox, ...common },
-		maakunta: { areas: scoredRegions, viewBox: geometry.maakunta.viewBox, ...common },
+	const byCode = new Map(municipal.map((area) => [area.code, area]));
+
+	// Figures only — the scoring is a separate pass so the page can redo it when a category is
+	// switched off. See `scoreCompareViews`.
+	const joined: CompareViews = {
+		finland: { areas: municipal, viewBox: geometry.finland.viewBox, ...common },
+		maakunta: { areas: regionAreas, viewBox: geometry.maakunta.viewBox, ...common },
 		// The same municipal scores, filtered to the metro's eight — not rescored among
 		// themselves, which would make a kunta's number change when the tab flips.
 		//
@@ -1277,13 +1273,64 @@ export async function loadCompareViews(geometry: CompareGeometry): Promise<Compa
 							education: scored.education,
 							age: scored.age,
 							balance: scored.balance,
-							score: scored.score,
 							regionName: scored.regionName
 						}
 					: area;
 			}),
 			viewBox: geometry.tampere.viewBox,
 			...common
+		}
+	};
+
+	return scoreCompareViews(joined, INDICATORS);
+}
+
+/**
+ * Scores three tabs' worth of already-joined figures. Separate from the fetch so the page can run
+ * it again whenever the reader switches a category off — the figures don't change, only which
+ * columns are folded into the score.
+ *
+ * Everything about *how* an area is scored lives here rather than in the component: municipalities
+ * are ranked once against all 308 and the metro tab reuses those numbers (a kunta's score must not
+ * move when the tab flips), regions are ranked among the 19 because their figures are roll-ups of a
+ * different kind of area, and only the *figures* cross from the municipal lookup to the metro tab —
+ * taking the whole object would bring its coarse `d` along.
+ */
+export function scoreCompareViews(
+	views: CompareViews,
+	indicators: Indicator<CompareArea>[]
+): CompareViews {
+	const empty: ScoreBreakdown = {
+		...EMPTY_SCORE,
+		parts: indicators.map((indicator) => ({
+			key: indicator.key,
+			label: indicator.label,
+			percentile: null,
+			rank: null,
+			ranked: 0,
+			value: null,
+			formatted: indicator.format(null)
+		}))
+	};
+
+	const apply = (areas: CompareArea[], scores: Map<string, ScoreBreakdown>) =>
+		areas.map((area) => ({ ...area, score: scores.get(area.code) ?? empty }));
+
+	const municipal = apply(views.finland.areas, scoreAreas(views.finland.areas, indicators));
+	const byCode = new Map(municipal.map((area) => [area.code, area]));
+
+	return {
+		finland: { ...views.finland, areas: municipal },
+		maakunta: {
+			...views.maakunta,
+			areas: apply(views.maakunta.areas, scoreAreas(views.maakunta.areas, indicators))
+		},
+		tampere: {
+			...views.tampere,
+			areas: views.tampere.areas.map((area) => ({
+				...area,
+				score: byCode.get(area.code)?.score ?? empty
+			}))
 		}
 	};
 }

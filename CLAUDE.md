@@ -247,8 +247,30 @@ A composite score, not a published statistic: six indicators, equal weights, one
   **1** with six. Ranking the score first makes the band labels true by construction (31/45/61/30/61/45/31
   of 304 today) and keeps them true as domains land. `score.spec.ts` pins it; pass the raw score to
   `scoreColorFor` and the labels start lying again.
-- The breakdown is a real `<table>` (Indicator / Figure / Percentile) with no caption — the headers
-  say it. The two numbers were once concatenated into one cell and that made every read a decode.
+- The breakdown is a real `<table>` — Category / Figure / Rank / Pct — with no caption, since the
+  headers say it. Rank is the area's position on that category alone ("113/304"), Pct is what the
+  score is a mean of; they answer different questions, and neither is readable off the other at a
+  glance. The denominator is printed per row because it varies: jobs ranks out of 304 (four
+  municipalities publish no rate), the rest out of 308. Four numeric columns in a ~250 px panel are
+  tight, and two things keep them legible — a `padding-left` gutter between columns, without which
+  the figure and rank render as one string ("12,6 %224 of 304"), and the People indicator formatting
+  as `−14,6 ‰` rather than the population map's spelled-out "per 1 000", which wrapped onto a second
+  line. Both were real defects, not hypotheticals.
+- **Categories are switchable, all on by default.** The chips at the top of the panel drive
+  `enabled`, and `scoreCompareViews(views, indicators)` re-runs the whole scoring pass — that
+  function exists precisely so the fetch and the scoring are separable; `loadCompareViews` ends by
+  calling it with all of `INDICATORS`. Nothing refetches; only which columns are averaged changes.
+  Two behaviours fall out of it for free and are tested: switching **Jobs** off scores the four
+  Åland municipalities, because the coverage floor is then satisfied by the five that remain; and
+  switching everything off leaves the map hatched with a "switch a category back on" note rather
+  than dividing by zero. The chip row is rendered before every branch of the panel so it doesn't
+  move while the pointer crosses the map.
+- **The score map is a traffic light** — green / yellow / red — where every other map runs green /
+  neutral grey / red. Grey is right on those: it marks "at the reference figure", where the measure
+  has nothing to say. Here the middle is "middling", a verdict rather than an absence. Both arms are
+  monotone in lightness from the yellow outwards, so magnitude survives red-green colour blindness,
+  and both pass `validate_palette.js --ordinal` against `MAP_SURFACE` (light ends 2,07:1 and
+  2,34:1). The yellow is exempt from the light-end floor for the same reason the shared grey is.
 
 ### Map switch, styling, build
 

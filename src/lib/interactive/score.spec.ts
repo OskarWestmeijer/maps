@@ -87,8 +87,24 @@ describe('scoreAreas', () => {
 		// The panel shows the number behind the percentile, which is what stops a rank-based
 		// score being unaccountable.
 		expect(result.get('002')?.parts).toEqual([
-			{ key: 'jobs', label: 'Jobs', percentile: 50, value: 10, formatted: '10 %' },
-			{ key: 'people', label: 'People', percentile: 50, value: 10, formatted: '10' }
+			{
+				key: 'jobs',
+				label: 'Jobs',
+				percentile: 50,
+				rank: 2,
+				ranked: 3,
+				value: 10,
+				formatted: '10 %'
+			},
+			{
+				key: 'people',
+				label: 'People',
+				percentile: 50,
+				rank: 2,
+				ranked: 3,
+				value: 10,
+				formatted: '10'
+			}
 		]);
 	});
 
@@ -181,12 +197,38 @@ describe('coverage floor', () => {
 describe('scoreColorFor', () => {
 	it('diverges around 50, which percentile ranking makes a true midpoint', () => {
 		expect(SCORE_CLASSES.map((c) => c.min)).toEqual([-Infinity, 10, 25, 45, 55, 75, 90]);
-		expect(scoreColorFor(50)).toBe(DIVERGING_SCALE.neutral.color);
 	});
 
-	it('reuses the site-wide green/red, so the colours mean one thing across the maps', () => {
+	it('is a traffic light, not the site-wide grey-midpoint scale', () => {
+		// The only map carrying a composite verdict, so the only one where the middle is
+		// "middling" rather than "at the reference figure" — grey says nothing, yellow does.
+		expect(scoreColorFor(50)).not.toBe(DIVERGING_SCALE.neutral.color);
+		expect(scoreColorFor(50)).toBe('#ecd15f');
+		// Both ends stay the shared green and red, so better and worse read the same site-wide.
 		expect(scoreColorFor(95)).toBe(DIVERGING_SCALE.green[2].color);
 		expect(scoreColorFor(5)).toBe(DIVERGING_SCALE.red[2].color);
+	});
+
+	it('runs light at the middle to dark at both ends, so magnitude survives CVD', () => {
+		// Each arm is monotone in lightness outwards from the yellow — the property that keeps a
+		// red-green-blind reader able to rank two areas by depth alone.
+		const luminance = (hex: string) => {
+			const channel = (i: number) => {
+				const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+
+				return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+			};
+
+			return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
+		};
+		const light = SCORE_CLASSES.map((c) => luminance(c.color));
+
+		// Index 3 is the yellow midpoint; both directions get darker away from it.
+		expect(light[3]).toBeGreaterThan(Math.max(light[2], light[4]));
+		expect(light[2]).toBeGreaterThan(light[1]);
+		expect(light[1]).toBeGreaterThan(light[0]);
+		expect(light[4]).toBeGreaterThan(light[5]);
+		expect(light[5]).toBeGreaterThan(light[6]);
 	});
 
 	it('picks the class the score falls in, edges included', () => {

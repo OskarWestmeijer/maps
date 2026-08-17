@@ -5,7 +5,9 @@
 	import { shortRegionName } from '$lib/interactive/regions';
 	import {
 		emptyCompareViews,
+		INDICATORS,
 		loadCompareViews,
+		scoreCompareViews,
 		type CompareArea,
 		type CompareViews
 	} from '$lib/interactive/liveData';
@@ -18,8 +20,29 @@
 	// two maps, so the refresh cron moves this one too. Until they land every area is unscored,
 	// which the map already draws as its no-data hatch.
 	let loaded = $state<CompareViews | null>(null);
-	const views = $derived(loaded ?? emptyCompareViews(data));
 	let failed = $state(false);
+
+	/**
+	 * Which categories are folded into the score. All of them by default — switching one off is a
+	 * question the reader asks ("who wins if I don't care about age?"), not a setting to configure
+	 * before the page means anything.
+	 *
+	 * Held as a Set of keys rather than a flag per indicator so adding a domain needs no edit here.
+	 */
+	let enabled = $state(new Set(INDICATORS.map((indicator) => indicator.key)));
+	const indicators = $derived(INDICATORS.filter((indicator) => enabled.has(indicator.key)));
+
+	function toggle(key: string) {
+		// Reassigned rather than mutated: a `Set` isn't deeply reactive in Svelte 5.
+		const next = new Set(enabled);
+
+		next.has(key) ? next.delete(key) : next.add(key);
+		enabled = next;
+	}
+
+	// Rescored on every toggle. The figures don't move — only which columns are averaged — so this
+	// re-ranks 308 areas over a handful of columns and nothing is refetched.
+	const views = $derived(scoreCompareViews(loaded ?? emptyCompareViews(data), indicators));
 
 	onMount(async () => {
 		loaded = await loadCompareViews(data);
@@ -84,6 +107,16 @@
 		new Set([...ends.highest, ...ends.lowest].map((area) => area.regionName)).size > 1
 	);
 
+	/**
+	 * "116/304" — where an area places on one category alone.
+	 *
+	 * The denominator earns its space despite being nearly constant: it isn't quite, because a
+	 * category ranks only the areas that publish it, and jobs is out of 304 where the rest are 308.
+	 */
+	function placing(rank: number | null, ranked: number): string {
+		return rank === null ? '—' : `${rank}/${ranked}`;
+	}
+
 	/** "68,4" — the score itself, or a word where there isn't one. */
 	function scoreValue(score: number | null): string {
 		return score === null ? 'no score' : decimal(score);
@@ -110,6 +143,39 @@
 	valueLabel={(area) => scoreValue(area.score.score)}
 >
 	{#snippet panel({ displayed, areaNoun, select })}
+		<!--
+			The categories, switchable. Rendered first and outside every branch below so the row
+			stays put while hovering moves the rest of the panel around — a control that jumps as
+			the pointer crosses the map is unusable.
+
+			Not a settings panel: turning one off is the question "who wins if I don't count age?",
+			and the answer arrives immediately because the figures are already here and only the
+			mean is recomputed.
+		-->
+		<div class="mb-3 border-b border-base-300 pb-2">
+			<p class="stat-label mb-1">Counted in the score</p>
+			<div class="flex flex-wrap gap-1">
+				{#each INDICATORS as indicator (indicator.key)}
+					{@const on = enabled.has(indicator.key)}
+					<button
+						type="button"
+						class="category-toggle"
+						class:is-on={on}
+						aria-pressed={on}
+						onclick={() => toggle(indicator.key)}
+					>
+						{indicator.label}
+					</button>
+				{/each}
+			</div>
+		</div>
+
+		{#if indicators.length === 0}
+			<p class="mt-2 text-sm" style:color="var(--ink-muted)">
+				Nothing to score — switch a category back on.
+			</p>
+		{/if}
+
 		<!--
 			Unlike the other two maps there is no whole-country fallback here: a composite score
 			for "Finland" would have to be Finland's percentile among itself, which is meaningless.
@@ -215,29 +281,34 @@
 			{/if}
 
 			<!--
-				What the score is made of, as an actual table: one row per domain, the published
-				figure in one column and where it puts this area in the distribution in the next —
-				the number the score is a mean of. It was one string ("9,5 % · 62") under a
-				"figure · percentile" caption, which made the reader decode two different kinds of
-				number out of one cell every time.
+				What the score is made of, as an actual table: one row per category, its published
+				figure, its own ranking on that category alone, and the percentile the score is a
+				mean of. It was once one string ("9,5 % · 62") under a "figure · percentile"
+				caption, which made the reader decode two kinds of number out of one cell.
 			-->
 			<div class="mt-3 border-t border-base-300 pt-2">
 				<!-- No caption above it: the column headers already say what the table is. -->
 				<table class="score-table w-full">
 					<thead>
 						<tr>
-							<th scope="col" class="stat-label text-left">Indicator</th>
+							<th scope="col" class="stat-label text-left">Category</th>
 							<th scope="col" class="stat-label text-right">Figure</th>
-							<th scope="col" class="stat-label text-right">Percentile</th>
+							<th scope="col" class="stat-label text-right">Rank</th>
+							<th scope="col" class="stat-label text-right">Pct</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each breakdown.parts as part (part.key)}
 							<tr>
 								<th scope="row" class="text-left text-sm font-normal">{part.label}</th>
-								<td class="text-right text-sm">{part.formatted}</td>
-								<!-- The percentile carries the display face, because it's the column the
-								     score is actually computed from. -->
+								<td class="text-right text-sm whitespace-nowrap">{part.formatted}</td>
+								<!-- The category's own ranking, which is what a reader asks for by name:
+								     "116 of 304 on jobs" is a position, where the percentile beside it is
+								     the thing the score is actually a mean of. Both, because they answer
+								     different questions and neither derives the other at a glance. -->
+								<td class="text-right text-sm whitespace-nowrap">
+									{placing(part.rank, part.ranked)}
+								</td>
 								<td class="display-wide text-right text-sm font-bold">
 									{part.percentile === null ? '—' : decimal(part.percentile, 0)}
 								</td>
@@ -382,6 +453,51 @@
 </MapShell>
 
 <style>
+	/* Chips rather than checkboxes: six of them have to fit two rows of a narrow panel, and the
+	   on/off state is carried by fill the way the map's own classes are. `aria-pressed` does the
+	   semantics, so the styling is free to be this compact. */
+	.category-toggle {
+		border-radius: 999px;
+		border: 1px solid var(--color-base-300);
+		padding: 0.1rem 0.55rem;
+		font-size: 0.75rem;
+		font-stretch: 92%;
+		color: var(--ink-faint);
+		transition:
+			background 120ms ease,
+			color 120ms ease;
+	}
+
+	.category-toggle.is-on {
+		background: var(--color-base-300);
+		color: var(--ink);
+		font-weight: 600;
+	}
+
+	.category-toggle:hover {
+		color: var(--ink);
+	}
+
+	.category-toggle:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.category-toggle {
+			transition: none;
+		}
+	}
+
+	/* Column rules rather than row rules, and a gutter between columns — without it the figure
+	   and the rank run together as one string ("12,6 %224 of 304"). First column keeps its left
+	   edge flush with the rest of the panel. */
+	.score-table th + th,
+	.score-table td + td,
+	.score-table td:first-of-type {
+		padding-left: 0.6rem;
+	}
+
 	/* Padding on the row rather than each cell, so the hover highlight covers the whole line
 	   while the subgrid keeps the four columns aligned across both blocks. */
 	.ranking-row {
