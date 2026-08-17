@@ -47,6 +47,34 @@ SOFTWARE_METADATA = {
     ]
 }
 
+# 12bs declares two breakdowns we don't want. Both are eliminable, so omitting them returns
+# Statistics Finland's own totals — 330 rows rather than 330 x 15 x 3.
+EDUCATION_METADATA = {
+    "variables": [
+        {"code": "timeperiod_y", "text": "Vuosi", "time": True, "values": ["2024", "2025"]},
+        {
+            "code": "alue_23_20260101",
+            "text": "Alue 2026",
+            "elimination": True,
+            "values": ["SSS", "KU020", "MK01", "MA1"],
+        },
+        {
+            "code": "ikaryhma_10_20180101",
+            "text": "Ikä",
+            "elimination": True,
+            "values": ["SSS", "15-19", "20-24", "25-29"],
+        },
+        {
+            "code": "sukupuoli_9_20180101",
+            "text": "Sukupuoli",
+            "elimination": True,
+            "values": ["SSS", "1", "2"],
+        },
+        {"code": "contentscode", "text": "Tiedot", "values": ["kaste5T8osuus", "vktm"]},
+    ]
+}
+
+
 # 14ww has no dimension beyond area and measure, which is what lets it be fetched with no
 # `select` at all — the area code is dated, so it can only be found via the metadata.
 INCOME_METADATA = {
@@ -72,10 +100,59 @@ class BuildQueryTest(unittest.TestCase):
             selection = next(q for q in query if q["code"] == code)["selection"]
             self.assertEqual({"filter": "all", "values": ["*"]}, selection)
 
-    def test_covers_every_variable_the_table_declares(self):
+    def test_covers_every_variable_it_does_not_deliberately_omit(self):
         query = build_query(table("unemployment"), UNEMPLOYMENT_METADATA)
 
         self.assertEqual(["Alue", "timeperiod_m", "contentscode"], [q["code"] for q in query])
+
+    def test_drops_the_age_and_sex_breakdowns_from_the_education_query(self):
+        """Both are eliminable, so leaving them out is what returns one row per area."""
+
+        query = build_query(table("education"), EDUCATION_METADATA)
+
+        self.assertEqual(
+            ["timeperiod_y", "alue_23_20260101", "contentscode"], [q["code"] for q in query]
+        )
+
+    def test_still_takes_the_newest_period_and_every_area_alongside_an_omit_rule(self):
+        query = build_query(table("education"), EDUCATION_METADATA)
+        selections = {q["code"]: q["selection"] for q in query}
+
+        self.assertEqual({"filter": "top", "values": ["1"]}, selections["timeperiod_y"])
+        self.assertEqual({"filter": "all", "values": ["*"]}, selections["alue_23_20260101"])
+        self.assertEqual({"filter": "all", "values": ["*"]}, selections["contentscode"])
+
+    def test_rejects_a_table_whose_omitted_breakdown_no_longer_matches(self):
+        """The dangerous case: the variable is still there, and the response is 45x too big."""
+
+        renamed = {
+            "variables": [
+                {"code": "timeperiod_y", "time": True, "values": ["2025"]},
+                {"code": "alue", "values": ["SSS", "KU020"]},
+                {"code": "ika", "elimination": True, "values": ["SSS", "0-14", "15-24"]},
+                {"code": "sukupuoli", "elimination": True, "values": ["SSS", "1", "2"]},
+                {"code": "contentscode", "values": ["kaste5T8osuus"]},
+            ]
+        }
+
+        with self.assertRaisesRegex(FetchError, "15-19"):
+            build_query(table("education"), renamed)
+
+    def test_rejects_omitting_a_variable_that_is_no_longer_eliminable(self):
+        """Without elimination PxWeb rejects the query; name the cause rather than the 400."""
+
+        required = {
+            "variables": [
+                {"code": "timeperiod_y", "time": True, "values": ["2025"]},
+                {"code": "alue", "values": ["SSS", "KU020"]},
+                {"code": "ikaryhma", "values": ["SSS", "15-19", "20-24"]},
+                {"code": "sukupuoli", "elimination": True, "values": ["SSS", "1", "2"]},
+                {"code": "contentscode", "values": ["kaste5T8osuus"]},
+            ]
+        }
+
+        with self.assertRaisesRegex(FetchError, "eliminable"):
+            build_query(table("education"), required)
 
     def test_narrows_the_occupation_variable_to_the_software_groups(self):
         query = build_query(table("software"), SOFTWARE_METADATA)
@@ -149,6 +226,28 @@ def unemployment_rows(count: int) -> list[dict]:
     return rows
 
 
+EDUCATION_COLUMNS = [
+    ("timeperiod_y", "t"),
+    ("alue_23_20260101", "d"),
+    ("vaesto_15_", "c"),
+    ("kaste0", "c"),
+    ("kaste0osuus", "c"),
+    ("kaste3", "c"),
+    ("kaste3osuus", "c"),
+    ("kaste5T8", "c"),
+    ("kaste5T8osuus", "c"),
+    ("vktm", "c"),
+]
+
+
+def education_export(rows: int) -> dict:
+    values = ["1"] * (len(EDUCATION_COLUMNS) - 2)
+    data = [{"key": ["2025", "SSS"], "values": values}]
+    data += [{"key": ["2025", f"KU{n:03d}"], "values": values} for n in range(rows - 1)]
+
+    return px(EDUCATION_COLUMNS, data)
+
+
 class ValidateJsonTest(unittest.TestCase):
     def test_accepts_a_well_formed_export_and_returns_its_period(self):
         payload = px(UNEMPLOYMENT_COLUMNS, unemployment_rows(320))
@@ -217,6 +316,15 @@ class ValidateJsonTest(unittest.TestCase):
 
         with self.assertRaisesRegex(FetchError, "ekvikturaha_med"):
             validate_json(table("income"), px(columns, rows))
+
+    def test_accepts_the_education_export_with_its_unprefixed_columns(self):
+        self.assertEqual("2025", validate_json(table("education"), education_export(330)))
+
+    def test_rejects_an_education_export_that_kept_its_breakdowns(self):
+        """330 areas x 15 age groups x 3 sexes. Every row valid; the file is the problem."""
+
+        with self.assertRaisesRegex(FetchError, "at most 1000"):
+            validate_json(table("education"), education_export(14850))
 
     def test_national_only_table_needs_no_whole_country_row(self):
         columns = [("timeperiod_m", "t"), ("tyottaste_trendi", "c"), ("tyti-Tyottomyysaste", "c")]

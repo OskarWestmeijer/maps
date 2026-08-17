@@ -28,7 +28,8 @@
 		failed =
 			loaded.finland.period === '' ||
 			loaded.finland.populationPeriod === '' ||
-			loaded.finland.incomePeriod === '';
+			loaded.finland.incomePeriod === '' ||
+			loaded.finland.educationPeriod === '';
 	});
 
 	let region = $state<RegionId>('finland');
@@ -40,7 +41,7 @@
 	// of them rather than quoting whichever happens to come first. Deduplicated, because two
 	// annual tables landing on the same year should read as one date, not a repetition.
 	const periodLabel = $derived.by(() => {
-		const periods = [view.period, view.populationPeriod, view.incomePeriod];
+		const periods = [view.period, view.populationPeriod, view.incomePeriod, view.educationPeriod];
 
 		if (periods.some((p) => !p)) return undefined;
 
@@ -120,14 +121,14 @@
 		{/if}
 
 		{#if failed}
-			<!-- Both tables feed the score, so this is the one map where a single missing file
+			<!-- Every table feeds the score, so this is the one map where a single missing file
 			     empties everything — say so rather than showing a hatched country. -->
 			<p class="mt-2 text-xs" style:color="var(--ink-faint)">
 				Live figures unavailable — the statistics couldn't be loaded.
 			</p>
 		{:else if !displayed}
 			<p class="mt-2 text-sm" style:color="var(--ink-muted)">
-				Unemployment rate and population change, combined into one score per {areaNoun}.
+				Jobs, people, income and education, combined into one score per {areaNoun}.
 			</p>
 
 			<!--
@@ -291,10 +292,12 @@
 
 				<dt class="font-semibold">Income</dt>
 				<dd>Median disposable income per consumption unit — higher is better</dd>
+
+				<dt class="font-semibold">Education</dt>
+				<dd>Share of the 15+ population with a tertiary degree — higher is better</dd>
 			</dl>
 			<p class="mt-1 text-base-content/60">
-				Equal weights. Education and housing are intended to join them; each is one more indicator
-				in the same mean.
+				Equal weights. Housing is intended to join them; it is one more indicator in the same mean.
 			</p>
 		</section>
 
@@ -307,9 +310,9 @@
 				<p>
 					Regions are ranked against the other 18, not against the 308 municipalities — a percentile
 					only means something within one set of areas. A region's score and a municipality's are
-					not on the same scale. The regional unemployment rate and median income are both their
-					publishers' own figures; only the population change is summed from the region's
-					municipalities, which that export doesn't publish.
+					not on the same scale. The regional unemployment rate, median income and education share
+					are all their publishers' own figures; only the population change is summed from the
+					region's municipalities, which that export doesn't publish.
 				</p>
 			</section>
 		{/if}
@@ -334,6 +337,13 @@
 					view.incomeSource && `${view.incomeSource} (PxWeb 14ww)`,
 					view.incomePeriod && formatPeriod(view.incomePeriod),
 					view.incomePolled && `polled ${formatDate(view.incomePolled)}`
+				)}
+			</p>
+			<p class="mt-1">
+				{sourceLine(
+					view.educationSource && `${view.educationSource} (PxWeb 12bs)`,
+					view.educationPeriod && formatPeriod(view.educationPeriod),
+					view.educationPolled && `polled ${formatDate(view.educationPolled)}`
 				)}
 			</p>
 			<p class="mt-1">Boundaries · Maanmittauslaitos</p>

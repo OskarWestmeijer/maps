@@ -46,6 +46,7 @@ const maps = [
 	'./interactive/unemployment',
 	'./interactive/population',
 	'./interactive/income',
+	'./interactive/education',
 	'./interactive/compare'
 ];
 

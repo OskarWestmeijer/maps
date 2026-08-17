@@ -4,16 +4,20 @@ import software from '../../../static/data/software_occupations_register_kunnat_
 import survey from '../../../static/data/unemployment_survey_national_135z.json';
 import population from '../../../static/data/population_register_kunnat_121w.json';
 import income from '../../../static/data/income_register_kunnat_14ww.json';
+import education from '../../../static/data/education_register_kunnat_12bs.json';
 import {
 	emptyCompareViews,
+	emptyEducationViews,
 	emptyIncomeViews,
 	emptyPopulationViews,
 	emptyUnemploymentViews,
 	loadCompareViews,
+	loadEducationViews,
 	loadIncomeViews,
 	loadPopulationViews,
 	loadUnemploymentViews,
 	type CompareGeometry,
+	type EducationGeometry,
 	type IncomeGeometry,
 	type PopulationGeometry,
 	type UnemploymentGeometry
@@ -21,6 +25,7 @@ import {
 import { EMPTY_KUNTA_STATS } from './unemployment';
 import { EMPTY_POPULATION_STATS } from './population';
 import { EMPTY_INCOME_STATS } from './income';
+import { EMPTY_EDUCATION_STATS } from './education';
 import type { FinlandMap, Kunta } from './finland';
 import type { KuntaStats } from './unemployment';
 import type { PopulationStats } from './population';
@@ -58,6 +63,11 @@ const manifest = {
 			period: '2024',
 			updated: '2025-12-16T06:00:00Z',
 			polled: '2026-08-11T18:39:44Z'
+		},
+		'education_register_kunnat_12bs.json': {
+			period: '2025',
+			updated: '2026-06-18T05:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
 		}
 	}
 };
@@ -68,6 +78,7 @@ const DATA_DIR: Record<string, unknown> = {
 	'unemployment_survey_national_135z.json': survey,
 	'population_register_kunnat_121w.json': population,
 	'income_register_kunnat_14ww.json': income,
+	'education_register_kunnat_12bs.json': education,
 	'manifest.json': manifest
 };
 
@@ -400,6 +411,106 @@ describe('loadIncomeViews', () => {
 	});
 });
 
+const educationGeometry: EducationGeometry = {
+	finland: map([
+		area('091', 'Helsinki', EMPTY_EDUCATION_STATS),
+		area('837', 'Tampere', EMPTY_EDUCATION_STATS),
+		area('536', 'Nokia', EMPTY_EDUCATION_STATS)
+	]),
+	maakunta: map([area('06', 'Pirkanmaa', EMPTY_EDUCATION_STATS)]),
+	tampere: map([
+		area('837', 'Tampere', EMPTY_EDUCATION_STATS),
+		area('536', 'Nokia', EMPTY_EDUCATION_STATS)
+	]),
+	membersOf: { '06': ['837', '536'] }
+};
+
+describe('loadEducationViews', () => {
+	it('joins the published municipal shares onto the shapes', async () => {
+		const views = await loadEducationViews(educationGeometry);
+		const tampere = views.finland.areas.find((a) => a.code === '837');
+
+		expect(tampere?.tertiaryShare).toBeGreaterThan(0);
+		expect(tampere?.population15).toBeGreaterThan(0);
+		expect(tampere?.levelIndex).toBeGreaterThan(0);
+		expect(views.finland.period).toBe('2025');
+	});
+
+	it('names each municipality’s maakunta under the panel heading', async () => {
+		const views = await loadEducationViews(educationGeometry);
+
+		expect(views.finland.areas.find((a) => a.code === '837')?.regionName).toBe('Pirkanmaa');
+	});
+
+	it('reads the Region tab from the export’s own MK rows', async () => {
+		const views = await loadEducationViews(educationGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+		const contents = education.columns.filter((c) => c.type === 'c').map((c) => c.code);
+		const published = education.data.find((r) => r.key[1] === 'MK06');
+
+		expect(pirkanmaa?.tertiaryShare).toBe(
+			Number(published?.values[contents.indexOf('kaste5T8osuus')])
+		);
+	});
+
+	it('gives the metro tab an exact headline, unlike the income map', async () => {
+		// The contrast worth pinning: a share of a headcount combines, a median doesn't. The
+		// roll-up is the summed degree-holders over the summed 15+ population, so it lands between
+		// its two members rather than being one of them.
+		const views = await loadEducationViews(educationGeometry);
+		const shares = views.tampere.areas.map((a) => a.tertiaryShare as number);
+		const total = views.tampere.total.tertiaryShare as number;
+
+		expect(views.tampere.total.name).toBe('Tampere Metro');
+		expect(total).toBeGreaterThan(Math.min(...shares));
+		expect(total).toBeLessThan(Math.max(...shares));
+	});
+
+	it('leaves the education level index out of the metro roll-up', async () => {
+		// It averages the 20+ population and only the 15+ headcount is published to weight it by.
+		const views = await loadEducationViews(educationGeometry);
+
+		expect(views.tampere.total.levelIndex).toBeNull();
+		expect(views.finland.total.levelIndex).toBeGreaterThan(0);
+	});
+
+	it('keeps the whole-country headline on the Region tab', async () => {
+		const views = await loadEducationViews(educationGeometry);
+
+		expect(views.maakunta.total.tertiaryShare).toBe(views.finland.total.tertiaryShare);
+	});
+
+	it('carries both reference figures on every tab, so colours never move', async () => {
+		const views = await loadEducationViews(educationGeometry);
+
+		expect(views.tampere.countryShare).toBe(views.finland.countryShare);
+		expect(views.maakunta.countryShare).toBe(views.finland.countryShare);
+		// The one the scale actually pivots on — the median of the 308 municipalities, computed
+		// from the export rather than from whichever areas the tab happens to show.
+		expect(views.tampere.medianShare).toBe(views.finland.medianShare);
+		expect(views.maakunta.medianShare).toBe(views.finland.medianShare);
+	});
+
+	it('pivots on the median municipality, well below the national share', async () => {
+		// The reason this map doesn't diverge around Finland: the national figure counts people,
+		// so it sits far above the middle municipality and only 42 of 308 reach it.
+		const views = await loadEducationViews(educationGeometry);
+
+		expect(views.finland.medianShare).toBeCloseTo(24.5, 1);
+		expect(views.finland.countryShare).toBeGreaterThan((views.finland.medianShare as number) + 9);
+	});
+
+	it('falls back to empty views when the export is missing', async () => {
+		install({ 'education_register_kunnat_12bs.json': new Response('', { status: 404 }) });
+
+		const views = await loadEducationViews(educationGeometry);
+
+		expect(views.finland.period).toBe('');
+		expect(views.finland.areas.every((a) => a.tertiaryShare === null)).toBe(true);
+		expect(views.finland.areas).toHaveLength(3);
+	});
+});
+
 /**
  * Föglö is in this fixture on purpose: its unemployment rate is suppressed in the real 12r5
  * export (four Åland municipalities are), which is exactly the case the coverage floor exists
@@ -430,7 +541,12 @@ describe('loadCompareViews', () => {
 		expect(tampere?.change).not.toBeNull();
 		expect(tampere?.income).toBeGreaterThan(0);
 		expect(tampere?.score.score).toBeGreaterThanOrEqual(0);
-		expect(tampere?.score.parts.map((p) => p.key)).toEqual(['jobs', 'people', 'income']);
+		expect(tampere?.score.parts.map((p) => p.key)).toEqual([
+			'jobs',
+			'people',
+			'income',
+			'education'
+		]);
 	});
 
 	it('names each municipality’s maakunta, for the ranking’s region column', async () => {
@@ -518,13 +634,46 @@ describe('loadCompareViews', () => {
 		expect(pirkanmaa?.change).toBeLessThan(Math.max(...changes));
 	});
 
+	it('reads the region education share from the export rather than deriving it', async () => {
+		// This one *could* be rolled up exactly — a share of a headcount is additive — but 12bs
+		// publishes MK rows, and the published figure is the one to use when there is one.
+		const views = await loadCompareViews(compareGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+		const published = education.data.find((r) => r.key[1] === 'MK06');
+		const contents = education.columns.filter((c) => c.type === 'c').map((c) => c.code);
+
+		expect(pirkanmaa?.education).toBe(Number(published?.values[contents.indexOf('kaste5T8osuus')]));
+	});
+
+	it('scores the fourth indicator without narrowing the scored set', async () => {
+		// 12bs publishes the share for all 308 municipalities, so the only unscored areas remain
+		// the four with no unemployment rate. Föglö is in this fixture for exactly that.
+		const views = await loadCompareViews(compareGeometry);
+		const tampere = views.finland.areas.find((a) => a.code === '837');
+		const foglo = views.finland.areas.find((a) => a.code === '062');
+
+		expect(tampere?.education).toBeGreaterThan(0);
+		expect(tampere?.score.parts.find((p) => p.key === 'education')?.percentile).not.toBeNull();
+		// Föglö has an education share too — it's the missing rate that leaves it unscored.
+		expect(foglo?.education).toBeGreaterThan(0);
+		expect(foglo?.score.score).toBeNull();
+	});
+
 	it('carries every period, since the tables are on independent cycles', async () => {
 		const views = await loadCompareViews(compareGeometry);
 
 		expect(views.finland.period).toBe('2026M06');
 		expect(views.finland.populationPeriod).toBe('2025');
 		expect(views.finland.incomePeriod).toBe('2024');
+		expect(views.finland.educationPeriod).toBe('2025');
 		expect(new Set([views.finland.populationPeriod, views.finland.incomePeriod]).size).toBe(2);
+	});
+
+	it('carries the education source and poll date separately from the others', async () => {
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.educationSource).toMatch(/koulutusrakenne/);
+		expect(views.finland.educationPolled).toBe('2026-08-11T18:39:44Z');
 	});
 
 	it('carries the income source and poll date separately from the others', async () => {
@@ -585,7 +734,8 @@ describe('the pre-fetch state', () => {
 		expect(views.finland.areas[0].score.parts.map((p) => p.label)).toEqual([
 			'Jobs',
 			'People',
-			'Income'
+			'Income',
+			'Education'
 		]);
 		expect(views.finland.areas[0].score.ranked).toBe(0);
 	});
@@ -597,5 +747,17 @@ describe('the pre-fetch state', () => {
 		expect(views.maakunta.total?.medianIncome).toBeNull();
 		// ...and none at all for the metro, before or after the fetch.
 		expect(views.tampere.total).toBeNull();
+	});
+
+	it('gives the education map a headline shape on all three tabs', () => {
+		// The counterpart to the income case above: every tab can have a total here, so every tab
+		// has the shape of one before the figures land.
+		const views = emptyEducationViews(educationGeometry);
+
+		expect(views.finland.total.tertiaryShare).toBeNull();
+		expect(views.maakunta.total.tertiaryShare).toBeNull();
+		expect(views.tampere.total.name).toBe('Tampere Metro');
+		// The maakunta label is geometry-derived, so it's on screen before any figures are.
+		expect(views.finland.areas.find((a) => a.code === '837')?.regionName).toBe('Pirkanmaa');
 	});
 });

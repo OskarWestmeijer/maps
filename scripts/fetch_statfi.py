@@ -74,6 +74,15 @@ class Table:
     min_rows: int = 0
     """Refuse to write a suspiciously short response. 0 disables the check."""
 
+    max_rows: int = 0
+    """Refuse to write a suspiciously *long* one. 0 disables the check.
+
+    A floor catches a table that stopped publishing; it cannot catch a query that stopped
+    narrowing. `omit` below is exactly that risk — 12bs answers a query that forgot to drop its
+    age and sex breakdowns with 14 850 perfectly valid rows, and the only thing wrong with them
+    is that the browser fetches the file on every page load.
+    """
+
     expect_whole_country: bool = True
     """Require an `SSS` row. False for national-only tables, which have no area dimension."""
 
@@ -83,6 +92,19 @@ class Table:
     Keyed by marker rather than by variable code because Statistics Finland renames variable
     codes (the 8.6.2026 database change did exactly that, and `alue_23_20260101` is already a
     dated code). The values a variable *offers* are the stable thing.
+    """
+
+    omit: tuple[tuple[str, ...], ...] = ()
+    """Variables to leave out of the query entirely, each identified by markers it must offer.
+
+    PxWeb returns a variable's own total when an `elimination: true` variable is simply not
+    asked for, which is how a table with breakdowns we don't want becomes one row per area.
+    12bs declares age (15 values) and sex (3), and taking them whole would multiply its 330 rows
+    into 14 850 and the file the browser downloads with them.
+
+    Identified by markers for the same reason `select` is, and by *several* markers because one
+    is not enough to tell these variables apart: `SSS` is offered by the area, age and sex
+    variables alike, while ("15-19", "20-24") and ("1", "2") each match exactly one.
     """
 
 
@@ -140,6 +162,32 @@ TABLES: tuple[Table, ...] = (
         ),
         content_suffix_match=True,
         min_rows=300,
+    ),
+    Table(
+        name="education",
+        path="vkour/12bs.px",
+        filename="education_register_kunnat_12bs.json",
+        # Unprefixed today (`kaste5T8osuus`, not `vkour-kaste5T8osuus`), but suffix-matched like
+        # the other two annual tables so a later prefix rename can't empty the map: a code with
+        # no "-" is simply its own suffix.
+        # The three shares the panel renders, the three counts behind them (a share is only
+        # aggregable through its numerator — see `aggregateEducationStats`), and the denominator.
+        required_contents=(
+            "kaste5T8osuus",
+            "kaste0osuus",
+            "kaste3osuus",
+            "kaste5T8",
+            "kaste0",
+            "kaste3",
+            "vktm",
+            "vaesto_15_",
+        ),
+        content_suffix_match=True,
+        min_rows=300,
+        # 330 rows: SSS + 19 maakuntas + 308 municipalities + 2 mainland/Åland. Anything near
+        # 14 850 means the age or sex breakdown came back.
+        max_rows=1000,
+        omit=(("15-19", "20-24"), ("1", "2")),
     ),
     Table(
         name="survey",
@@ -208,8 +256,8 @@ def build_query(table: Table, metadata: dict) -> list[dict]:
 
     Roles are resolved from the metadata rather than hardcoded, so a renamed variable code
     doesn't silently produce an empty or wrong export: the time variable is the one flagged
-    `time`, an explicitly-selected variable is found by a marker value it offers, and
-    everything else — areas, measures — is taken whole.
+    `time`, an explicitly-selected or omitted variable is found by the marker values it offers,
+    and everything else — areas, measures — is taken whole.
     """
 
     variables = metadata.get("variables") or []
@@ -218,10 +266,25 @@ def build_query(table: Table, metadata: dict) -> list[dict]:
         raise FetchError(f"{table.name}: no variables in table metadata")
 
     query = []
+    omitted: list[tuple[str, ...]] = []
 
     for variable in variables:
         code = variable.get("code")
         values = variable.get("values") or []
+        dropped = next((rule for rule in table.omit if all(m in values for m in rule)), None)
+
+        if dropped is not None:
+            # Only an eliminable variable answers with a total when left out; a required one
+            # makes PxWeb reject the whole query, so say which variable and why here rather
+            # than reading it out of an HTTP 400.
+            if not variable.get("elimination"):
+                raise FetchError(
+                    f"{table.name}: variable {code!r} is no longer eliminable, so omitting it "
+                    f"would not return its total"
+                )
+
+            omitted.append(dropped)
+            continue
 
         if is_time_variable(variable):
             # Only the newest period. These tables carry 200+ months of history and the maps
@@ -246,6 +309,17 @@ def build_query(table: Table, metadata: dict) -> list[dict]:
                 selection = {"filter": "all", "values": ["*"]}
 
         query.append({"code": code, "selection": selection})
+
+    # A rule that matches nothing is the dangerous case: the variable it was meant to drop is
+    # still there, still requested `all`, and the response is a valid file several megabytes
+    # too big. `max_rows` is the second net under this one.
+    unmatched = [rule for rule in table.omit if rule not in omitted]
+
+    if unmatched:
+        raise FetchError(
+            f"{table.name}: no variable offers {list(unmatched[0])}, so the breakdown it names "
+            f"can no longer be omitted"
+        )
 
     return query
 
@@ -290,6 +364,12 @@ def validate_json(table: Table, payload: dict) -> str:
 
     if table.min_rows and len(rows) < table.min_rows:
         raise FetchError(f"{table.name}: only {len(rows)} rows, expected at least {table.min_rows}")
+
+    if table.max_rows and len(rows) > table.max_rows:
+        raise FetchError(
+            f"{table.name}: {len(rows)} rows, expected at most {table.max_rows} — a breakdown "
+            f"this table declares is probably no longer being omitted"
+        )
 
     keys = [row.get("key") or [] for row in rows]
 

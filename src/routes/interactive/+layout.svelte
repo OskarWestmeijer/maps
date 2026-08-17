@@ -19,6 +19,7 @@
 		{ href: '/interactive/unemployment', label: 'Unemployment rate', icon: '📉' },
 		{ href: '/interactive/population', label: 'Population change', icon: '🏘️' },
 		{ href: '/interactive/income', label: 'Median income', icon: '💶' },
+		{ href: '/interactive/education', label: 'Higher education', icon: '🎓' },
 		// The composite of the ones above (and of whatever domains follow), so it sits last.
 		{ href: '/interactive/compare', label: 'Compare', icon: '⚖️' }
 	];
@@ -59,9 +60,9 @@
 
 	.map-switch {
 		display: inline-flex;
-		/* Wraps rather than running off the side: three pills, one of them named after both
-		   measures it combines, are wider than a phone. Only ever wraps below `lg`, where the
-		   page scrolls anyway and `--map-chrome` isn't in play. */
+		/* Wraps rather than running off the side: five pills are wider than a phone. Only ever
+		   wraps below `lg`, where the page scrolls anyway and `--map-chrome` isn't in play — if
+		   a sixth ever makes it wrap at `lg` too, `--map-chrome` owes it another row. */
 		flex-wrap: wrap;
 		justify-content: center;
 		gap: 0.25rem;
