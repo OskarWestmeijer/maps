@@ -207,3 +207,59 @@ describe('scoreColorFor', () => {
 		expect(inkOnScore(50)).toBe('var(--map-ink)');
 	});
 });
+
+describe('scorePercentile', () => {
+	/** n areas whose indicator values are all distinct, so every score is distinct too. */
+	const spread = (n: number) =>
+		Array.from({ length: n }, (_, i) => ({ code: String(i), a: i, b: i * 2 }));
+	const two: Indicator<{ code: string; a: number; b: number }>[] = [
+		{ key: 'a', label: 'A', valueOf: (x) => x.a, format: String, higherIsBetter: true, weight: 1 },
+		{ key: 'b', label: 'B', valueOf: (x) => x.b, format: String, higherIsBetter: true, weight: 1 }
+	];
+
+	it('ranks the score itself, so the best is 100 and the worst 0', () => {
+		const scored = scoreAreas(spread(11), two);
+
+		expect(scored.get('10')?.scorePercentile).toBe(100);
+		expect(scored.get('0')?.scorePercentile).toBe(0);
+		expect(scored.get('5')?.scorePercentile).toBe(50);
+	});
+
+	it('is null wherever the score is', () => {
+		const scored = scoreAreas(
+			[{ code: 'x', a: 1, b: null as unknown as number }, ...spread(3)],
+			two
+		);
+
+		expect(scored.get('x')?.score).toBeNull();
+		expect(scored.get('x')?.scorePercentile).toBeNull();
+	});
+
+	it('is what the colour bands are meant to be read against, not the raw score', () => {
+		// The regression this exists for. A score is a *mean* of percentile ranks, and a mean of
+		// ranks clusters towards the middle — harder with every indicator added. Colouring by the
+		// raw score put exactly one municipality of 304 in the class labelled "top 10 %"; ranking
+		// the score first restores a tenth of the areas to each tail, whatever gets added next.
+		const areas = spread(101);
+		const scored = scoreAreas(areas, two);
+		const percentiles = areas.map((a) => scored.get(a.code)?.scorePercentile ?? 0);
+
+		const inTopBand = percentiles.filter((p) => p >= 90).length;
+		const inBottomBand = percentiles.filter((p) => p < 10).length;
+
+		expect(inTopBand).toBeGreaterThanOrEqual(10);
+		expect(inBottomBand).toBeGreaterThanOrEqual(10);
+	});
+
+	it('gives every class its intended share of a uniform ranking', () => {
+		const areas = spread(200);
+		const scored = scoreAreas(areas, two);
+		const labels = areas.map((a) => scoreLabelFor(scored.get(a.code)?.scorePercentile ?? null));
+		const count = (label: string) => labels.filter((l) => l === label).length;
+
+		// 10 / 15 / 20 / 10 / 20 / 15 / 10 per cent, from the 10/25/45/55/75/90 band edges.
+		expect(count('top 10 %')).toBeCloseTo(20, -1);
+		expect(count('about average')).toBeCloseTo(20, -1);
+		expect(count('bottom 10 %')).toBeCloseTo(20, -1);
+	});
+});

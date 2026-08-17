@@ -30,7 +30,8 @@
 			loaded.finland.populationPeriod === '' ||
 			loaded.finland.incomePeriod === '' ||
 			loaded.finland.educationPeriod === '' ||
-			loaded.finland.agePeriod === '';
+			loaded.finland.agePeriod === '' ||
+			loaded.finland.balancePeriod === '';
 	});
 
 	let region = $state<RegionId>('finland');
@@ -92,7 +93,8 @@
 		// Hatched, not the flat backing grey `scoreColorFor` returns — a fourth grey sitting
 		// beside the neutral middle class would read as "average" rather than "no score". Same
 		// treatment as the other two maps.
-		return area.score.score === null ? 'url(#no-data)' : scoreColorFor(area.score.score);
+		// Coloured by where the score *ranks*, not by the score itself — see `scorePercentile`.
+		return area.score.score === null ? 'url(#no-data)' : scoreColorFor(area.score.scorePercentile);
 	}
 </script>
 
@@ -129,7 +131,7 @@
 			</p>
 		{:else if !displayed}
 			<p class="mt-2 text-sm" style:color="var(--ink-muted)">
-				Jobs, people, income, education and age, combined into one score per {areaNoun}.
+				Jobs, people, income, education, age and balance, combined into one score per {areaNoun}.
 			</p>
 
 			<!--
@@ -205,10 +207,10 @@
 				-->
 				<p
 					class="mt-2.5 inline-flex items-baseline gap-1.5 rounded-full py-1 pr-3 pl-2.5 text-xs font-semibold"
-					style:background={scoreColorFor(breakdown.score)}
-					style:color={inkOnScore(breakdown.score)}
+					style:background={scoreColorFor(breakdown.scorePercentile)}
+					style:color={inkOnScore(breakdown.scorePercentile)}
 				>
-					<span class="display-wide text-sm">{scoreLabelFor(breakdown.score)}</span>
+					<span class="display-wide text-sm">{scoreLabelFor(breakdown.scorePercentile)}</span>
 				</p>
 			{/if}
 
@@ -299,9 +301,19 @@
 
 				<dt class="font-semibold">Age</dt>
 				<dd>Mean age of the population — lower is better</dd>
+
+				<dt class="font-semibold">Balance</dt>
+				<dd>Points away from an even split of women and men — lower is better</dd>
 			</dl>
 			<p class="mt-1 text-base-content/60">
-				Equal weights. Age is the one direction that's a judgement rather than a fact.
+				Equal weights. Age and balance are directions this site chose; the other four are not
+				arguable.
+			</p>
+			<p class="mt-1 text-base-content/60">
+				Balance carries a caveat the others don't: in a municipality of a hundred people one person
+				is a whole percentage point, so the smallest places score worse on it partly as arithmetic.
+				It's kept because it's the least redundant of the six — it tracks the other five far more
+				loosely than they track each other.
 			</p>
 		</section>
 
@@ -314,9 +326,9 @@
 				<p>
 					Regions are ranked against the other 18, not against the 308 municipalities — a percentile
 					only means something within one set of areas. A region's score and a municipality's are
-					not on the same scale. Every regional figure but one is its publisher's own; only the
-					population change is summed from the region's municipalities, which that export doesn't
-					publish.
+					not on the same scale. Four of the six regional figures are their publishers' own; the
+					population change and the gender balance are summed from each region's municipalities,
+					which those two exports don't publish.
 				</p>
 			</section>
 		{/if}
@@ -355,6 +367,13 @@
 					view.ageSource && `${view.ageSource} (PxWeb 11ra)`,
 					view.agePeriod && formatPeriod(view.agePeriod),
 					view.agePolled && `polled ${formatDate(view.agePolled)}`
+				)}
+			</p>
+			<p class="mt-1">
+				{sourceLine(
+					view.balanceSource && `${view.balanceSource} (PxWeb 11re)`,
+					view.balancePeriod && formatPeriod(view.balancePeriod),
+					view.balancePolled && `polled ${formatDate(view.balancePolled)}`
 				)}
 			</p>
 			<p class="mt-1">Boundaries · Maanmittauslaitos</p>

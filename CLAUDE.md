@@ -1,141 +1,297 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) working in this repository.
 
 ## Project
 
-A SvelteKit (Svelte 5) static site for showcasing thematic maps created with QGIS, plus an interactive map of Finland's municipalities. Deployed as a static build served by Nginx.
+SvelteKit (Svelte 5) static site: a gallery of thematic maps made in QGIS, plus seven interactive
+choropleths of Finland's municipalities. Built by `adapter-static`, served by Nginx.
 
 ## Commands
 
 ```bash
-npm install              # install deps
-npm run dev               # local dev server (vite dev)
-npm run build              # production build via adapter-static -> ./build
-npm run preview            # preview the production build
-
-npm run check               # svelte-kit sync + svelte-check (type checking)
-npm run check:watch          # same, in watch mode
-
-npm run format               # prettier --write .
-npm run lint                  # prettier --check . (this is the only lint step; there is no eslint)
-
-npm run test:unit              # vitest (unit/component tests)
-npm run test:e2e                # playwright (e2e tests against a built preview server)
-npm run test                     # test:unit --run && test:e2e (full suite, as run in CI)
+npm run dev / build / preview      # vite dev, static build -> ./build, preview the build
+npm run check                      # svelte-kit sync + svelte-check
+npm run format / lint              # prettier --write / --check (no eslint)
+npm run test:unit / test:e2e       # vitest / playwright; `npm test` runs both, as CI does
 ```
 
-Run a single vitest test by name or file, e.g. `npx vitest run src/demo.spec.ts` or `npx vitest -t "adds 1 + 2"`.
-Run a single playwright test, e.g. `npx playwright test playwright/home.spec.ts`.
+Single tests: `npx vitest run src/x.spec.ts`, `npx vitest -t "name"`, `npx playwright test playwright/home.spec.ts`.
 
-Playwright on Fedora (the maintainer's OS): the headless-shell browser **does** run natively, without `--with-deps` or sudo — Playwright prints a "your OS is not officially supported" warning and downloads the ubuntu24.04-x64 fallback build, which works. The whole suite passes this way:
-
-```bash
-npx playwright install chromium-headless-shell   # once, and again after a Playwright bump
-npm run test:e2e
-```
-
-If a Playwright upgrade pulls in a browser revision that isn't installed, every spec fails with "Executable doesn't exist at .../chromium_headless_shell-<rev>" — that is a missing download, not a broken test; re-run the install command.
-
-Full browsers (headed mode, WebKit/Firefox) still need the system libraries Fedora lacks, so for those use distrobox:
-
-```bash
-distrobox create --name ubuntu --image ubuntu:24.04 --home ~/distrobox/ubuntu --additional-packages "git vim nodejs npm"
-distrobox enter ubuntu
-npx playwright install --with-deps
-npm run test:e2e
-distrobox stop ubuntu
-```
-
-Update dependencies with `npm-check-updates` (`ncu`): `ncu` to list, `ncu -u --target=patch|minor` for granular bumps, `ncu -u && npm install` for majors.
-
-Refreshing the maps' statistics from Statistics Finland (stdlib-only Python, no venv, no pip):
+Statistics refresh (stdlib-only Python, no venv, no pip):
 
 ```bash
 python3 scripts/fetch_statfi.py --dry-run --verbose   # fetch + validate, write nothing
-python3 scripts/fetch_statfi.py                        # rewrite the committed copy in static/data
-python3 -m unittest discover -s scripts -t scripts     # offline tests for the query builder/validator
+python3 scripts/fetch_statfi.py [--only <table>]      # rewrite the copy in static/data
+python3 -m unittest discover -s scripts -t scripts    # offline tests for query builder/validator
 ```
+
+Dependencies via `ncu` (`ncu -u --target=patch|minor`, or `ncu -u && npm install` for majors).
+
+**Playwright on Fedora** (the maintainer's OS): headless-shell runs natively — no `--with-deps`, no
+sudo. The "OS is not officially supported" warning is expected; the ubuntu24.04 fallback build
+works and the whole suite passes. Run `npx playwright install chromium-headless-shell` once, and
+again after a Playwright bump — "Executable doesn't exist at .../chromium_headless_shell-<rev>" on
+every spec is a missing download, not a broken test. Headed mode and WebKit/Firefox need libraries
+Fedora lacks; use distrobox (`ubuntu:24.04`, `npx playwright install --with-deps`) for those.
 
 ## Architecture
 
-- **Routing**: SvelteKit file-based routing under `src/routes`. `+layout.svelte` renders the shared navbar/footer shell around all pages (Gallery `/`, Interactive `/interactive/*`, About `/about`, and dynamic map detail pages `/gallery/[slug]`). `/interactive` is **not a page** — it's a shelf hosting the interactive maps, one nested route each (`/interactive/unemployment`, `/interactive/population`, `/interactive/income`, `/interactive/compare`). Its `+page.ts` redirects to the unemployment map (prerendered as a meta-refresh stub; nginx's `try_files $uri.html` serves it), and its `+layout.svelte` renders the pill switch between the maps. To add another map: new folder with `+page.server.ts`/`+page.svelte`, plus an entry in that layout's `maps` array.
-- **Geometry is build input, statistics are runtime data.** This split is the single most important thing about the interactive maps. The GeoJSON files live in `src/lib/interactive/`, are converted to SVG paths once at build time, and are baked into the prerendered page — they must never ship as public assets. The PxWeb statistics live in `static/data/`, are served at `/data/`, and are fetched by the browser when the page opens (`src/lib/interactive/liveData.ts`). That is what lets `scripts/fetch_statfi.py` refresh the figures on the production host with no rebuild, no redeploy and no container restart. Consequences worth knowing before changing anything here:
-  - `+page.server.ts` calls `loadGeometry` and ships shapes with **every stat field present and null**. The first paint is therefore a legible outline map with a hatched fill and em dashes, which fills in a moment later — that null state is the loading state, and nothing else is needed.
-  - The prerendered HTML no longer contains any figures. **Playwright assertions on numbers or fills must auto-retry** (`expect(locator).toHaveAttribute(...)`, `toBeVisible()`), never a bare `await locator.getAttribute('fill')` — a one-shot read races the fetch and sees `url(#no-data)`. `fits-one-screen.spec.ts` waits for the period line before measuring, since a panel of em dashes is shorter than one of numbers.
-  - Nothing in `liveData.ts` throws. A 404, a network failure or a malformed file leaves that file's figures null; the five files are independent, so a lagging 12ti empties the software-jobs block while the map still colours from 12r5. Only a total failure of the register/population file raises the panel's "Live figures unavailable" line.
-- **Map data is a single static source of truth**: `src/lib/maps.ts` exports a `maps` array (slug, image paths, title, description, steps, HD link). The gallery page (`src/routes/+page.svelte`) lists all entries; `src/routes/gallery/[slug]/+page.ts` looks up a map by slug for the detail page. To add a new map: add an entry to `maps.ts` and drop its image(s) into `static/` (preview image referenced by `src`, full-resolution version under `static/hd/`).
-- **Shared map machinery** (`src/lib/interactive`): all six interactive maps render inside `MapShell.svelte`, which owns everything they have in common — the Finland/Region/Tampere tabs, the SVG with its hover/click/keyboard behaviour and no-data hatch, the search box, the period + Sources popover row, and the one-viewport desktop layout. A page supplies `metric`, `fillFor(area)`, `valueLabel(area)`, and two snippets (`panel`, `sources`); the shell owns `hovered`/`selectedCode`/`search`, and `region` is `$bindable` so the page can read the matching payload for its panel. Small shared pieces sit beside it: `StatRow.svelte` (the label/figure row), `format.ts` (`count`/`percent`/`decimal`/`signed`/`formatPeriod`/`formatDate`/`sourceLine` — hand-rolled, see the note below), `views.ts` (the `RegionId`/`ShellView` types, in a module because a Svelte component can't export types from its instance script). `toFinlandMap` is generic over the per-metric stats type (`toFinlandMap<S>(collection, stats, emptyStats, paddingRatio?)`) and puts `landArea` on every area from the geometry's `landarea`. **Changing the shell changes all six maps** — `playwright/fits-one-screen.spec.ts` runs against all of them.
-- **Every panel names the hovered municipality's maakunta**, under its heading. 308 municipality names are not something anyone holds in their head, and the region is what locates an unfamiliar one. It rides on each area as `regionName`, set by `regionNames`/`withRegion` in `liveData.ts` from the `membersOf` grouping each geometry payload ships — the exports carry region _totals_ (`MK` rows), never a membership list, so this is the only place it exists. Two consequences: **every** `+page.server.ts` loader calls `assignToRegions`/`assertCompleteAssignment` (the unemployment, income and education ones purely for this label — all three read their export's own region rows for their figures); and because it's geometry-derived it's set in the `empty*Views` builders and survives `merge` untouched, so it's on screen before any statistics land. It's empty on the Region tab, whose areas _are_ maakunnat, and on a roll-up, which spans several.
-- **Interactive unemployment map** (`src/routes/interactive/unemployment`) is self-contained, separate from the maps data. The source is `src/lib/interactive/finland_kunnat_2km.geojson` (308 municipalities, MultiPolygon, simplified to a 2 km tolerance — replace this file to update the map). It deliberately lives in `src/lib`, **not** `static/`: it is build input, not a public asset, so it must not be copied into the image. `src/lib/interactive/finland.ts` converts it to SVG path data — the CRS is **EPSG:3067 (TM35FIN)**, already a planar projection in metres, so no reprojection library is needed; coordinates are emitted as `x,-y` (Y flip) and the `viewBox` derived from the data bounds does all the scaling. The page renders one `<path>` per municipality and fills a side panel on hover. Only `natcode`/`namefin`/`nameswe` are read from the GeoJSON — it also carries land/water area figures, but the info panel shows employment counts instead, so they are left out of the payload.
-  - The conversion runs in `+page.server.ts` (via the shared `loadGeometry` helper), **not** a universal `+page.ts`, and this matters: a universal load's `fetch` gets inlined into the prerendered HTML verbatim so the client can replay it, which embedded the whole 475 kB GeoJSON (649 kB page). A server load runs once at build time and only its compact result is serialized. `adapter-static` handles `+page.server.ts` fine as long as the route is prerendered.
-  - **Choropleth data**: `static/data/unemployment_register_kunnat_12r5.json` is a PxWeb export from KEHA-keskus / Työnvälitystilasto, table 12r5 ("Työttömät työnhakijat eri ryhmissä, palveluissa olevat ja avoimet työpaikat kuukauden lopussa"). `src/lib/interactive/unemployment.ts` parses it and joins to the geometry on `natcode`. Two PxWeb quirks it handles: each row's `values` array holds **only the content columns** (`type: 'c'`), so the rate's index must be resolved against that filtered list rather than `columns`; and suppressed figures are the string `'...'`, which must stay `null` instead of becoming 0. The file also carries region-level rows (`MK`/`SK`/`ELY`), a whole-country `SSS` row and a `KUJOU` "unknown municipality" bucket — only numeric `KU###` codes are mapped.
-  - The metric is `TYOTOSUUS`, the share of _registered unemployed jobseekers_ in the labour force — **not** Tilastokeskus's headline työttömyysaste, which comes from the Labour Force Survey (a sample survey with no municipal breakdown, so it cannot be mapped). The register figure runs a few points higher; label it accordingly in UI copy.
-  - **Both series are official statistics** (Suomen virallinen tilasto) — the real distinction is _administrative register_ vs _sample survey_, not official vs unofficial. The survey one is Tilastokeskus's official headline rate; being a survey does not make it less official. The Sources popover states this explicitly, in two labelled sections with Register/Survey badges. Don't reword it into "official vs survey".
-  - **Both national rates are shown side by side on purpose.** `static/data/unemployment_survey_national_135z.json` is Tilastokeskus table 135z (Labour Force Survey key figures), parsed by `src/lib/interactive/survey.ts`, which takes the `tyottaste_trendi` column — the number stat.fi advertises (10,5 % for 2026M06 against the register's 12,8 %). It is national-only and never colours the map. Displaying the two together, labelled, is what stops the map's higher figures reading as a bug; do not remove one without the other. The lookup goes by column **code**, not by the Finnish display text, precisely because `Työttömyysaste, %` is a strict prefix of the trend and seasonally-adjusted column names — a loose text match silently returns the wrong series.
-  - `KuntaStats` carries four absolute counts alongside the rate: `TYOVOIMATK` (labour force), `HAKIJALOPUSSA` (all jobseekers, including those in work), `TYOTTOMATLOPUSSA` (unemployed jobseekers — the numerator behind the rate) and `AVPAIKATLOPUSSA` (open vacancies on the reference day, **all** occupations — not to be confused with the software-slice vacancies from 12ti below). The panel renders the last two, Unemployed then Vacancies. Caveat worth keeping in mind: per its own column comment, `TYOVOIMATK` comes from Tilastokeskus's employment statistics and is typically ~2 years older than the monthly jobseeker counts. **Total population is not in this export** — adding it needs a separate väkiluku-by-municipality source, joined on the same `natcode`.
-  - **Data files are named `<measure>_<source type>_<scope>_<pxweb-table-id>`** — e.g. `unemployment_register_kunnat_12r5.json`. The period is deliberately **not** in the name any more: the refresh script overwrites each file in place, so a period in the filename would go stale on every run. Every parser reads the period out of the file contents instead. The trailing table id is the code shown in the PxWeb URL/UI for that specific table (not a Statistics Finland table-collection number), and it's what `scripts/fetch_statfi.py` keys its `TABLES` config on — so the filename stays traceable back to its source table.
-  - **Refreshing the data is `python3 scripts/fetch_statfi.py`**, not a manual download. It resolves each table's variables from the PxWeb metadata (time variable = the one flagged `time`, taken `top 1`; the 12ti occupation variable found by the marker value `2513` and 11ra's 43 measures narrowed to four the same way; 12bs's age and sex breakdowns **omitted**; everything else `all`), so a renamed variable code doesn't silently produce an empty export — Statistics Finland's 8.6.2026 database change did exactly that, and `alue_23_20260101` is already a dated code. **The `omit` rule is how a table with unwanted breakdowns becomes one row per area**: PxWeb returns a variable's own total when an `elimination: true` variable isn't asked for, which is what turns 12bs's 14 850 rows into 330. Like `select` it's keyed by marker values rather than variable codes, but by _several_ markers, because one isn't enough to tell them apart — `SSS` is offered by 12bs's area, age and sex variables alike, while `("15-19", "20-24")` and `("1", "2")` each match exactly one. Two guards, because the failure here is silent: a rule matching no variable raises (otherwise it falls through to `filter: all` and quietly restores the huge query), and so does omitting a variable that is no longer eliminable. It then **validates before writing**: the content columns the TypeScript parsers demand must be present, there must be an `SSS` row, municipal tables must return ≥ 300 rows, and a table with an `omit` rule must return no more than `max_rows` — a floor catches a table that stopped publishing, and only a ceiling catches a query that stopped narrowing. On failure it exits non-zero and leaves the previous file untouched, so a bad upstream release can't overwrite good data. Its per-table output says explicitly whether the file on disk was **written** or **left alone** (byte-identical response — the usual case, since the tables are monthly and annual); don't read "left alone" as a failure. It also writes `manifest.json` with three dates per file — `period` (what the figures describe), `updated` (when Statistics Finland published them, normalised from PxWeb's dotted `2026-07-21T05.00.00Z`) and `polled` (when we last asked). Only `polled` moves on a run that changes nothing, so a stale `updated` beside a fresh `polled` reads as "checked today, still June's release". Only `polled` is rendered; the other two are for inspecting `/data/manifest.json` directly. **`manifest.json` is gitignored** (its timestamp would dirty the tree on every run), so it is absent from a fresh clone and from the built image until the script runs — the maps then simply omit the "polled" date, and `liveData.spec.ts` synthesizes its own fixture rather than importing the file. `polled` is what feeds the "polled 11 Aug 2026" half of the line above the Sources button, and it's the only signal that the cron is still alive. The manifest is _merged_ rather than replaced, so `--only` — or a run where one table fails — can't drop the other files' entries.
-  - The seven API paths are `tyonv/12r5.px`, `tyonv/12ti.px`, `ssaaty/121w.px`, `tjt/14ww.px`, `vkour/12bs.px`, `vaerak/11ra.px`, `tyti/135z.px` under `https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin`. A `POST` with `{"response": {"format": "json"}}` returns exactly the `columns`/`data`/`metadata` shape the parsers read — the script writes the API response verbatim, which is why moving to a new month needs no code change at all.
-  - **Layout is pinned to one viewport at `lg` and up** (now in `MapShell.svelte`, shared by both maps): `main` is `lg:h-[calc(100dvh-var(--map-chrome,9.5rem))]` — 9.5rem is the navbar + footer from the root `+layout.svelte`, and the interactive layout raises `--map-chrome` to 12.9rem to pay for its map switch, the map's tinted sheet is `min-h-0 flex-1` so it fills the whole map column and stays **the same size in both regions** (the SVG letterboxes inside it; sizing the sheet to each region's own aspect ratio was tried and rejected, because the frame then jumped width when the tab changed), and the sources/attribution text lives in a `<details class="dropdown">` popover rather than inline. Below `lg` it stacks and scrolls. `playwright/fits-one-screen.spec.ts` asserts no vertical overflow at three desktop sizes — if you add anything to this page (the info panel especially, since it grows with every dataset joined onto it), that spec is what catches it pushing the search box or Sources button below the fold. Adjust the `9.5rem` if the navbar or footer height ever changes. The panel card's inset is `p-5 lg:p-4` — the tighter value buys back vertical budget exactly where it's scarce, since below `lg` the page scrolls anyway. **Note the spec's limit: it asserts the _document_ doesn't overflow, not that the panel card fits inside `main`.** At 1280×720 the population panel already runs past the footer line and its last row (Density) is clipped — true before the register-correction row was added, and still true after. Slimming that panel, or letting the card scroll inside its column, is the open fix.
-  - There is deliberately **no colour-swatch legend** — removed in favour of a municipality search box (typed, filtered dropdown of matches — not a native `<datalist>`, whose Chromium picker-arrow reads as a combo/multi-select) at the top of the side panel. Picking a result, or clicking a municipality on the map directly, sets a persistent `selectedCode` that fills it blue on the map (`class:selected`, `SELECTED_FILL`) independent of `hovered`, which only ever previews; the panel reads `displayed = hovered ?? selected`, falling back further to the whole-country figures when neither is set. The map still colour-codes by `colorFor(...)` — only the explanatory swatches are gone, so the number is always shown alongside the colour instead (hover/selection panel, `aria-label`). What replaces the legend's job is the panel's **deviation chip**: the signed distance from the national rate ("+3,7 pts vs Finland"), tinted with the very colour the map filled that municipality with, so the hue never has to be decoded on its own. It's suppressed when the panel _is_ the national figure, which would trivially read "0,0". Don't reintroduce a swatch legend — this is the intended replacement.
-  - Numbers and dates are formatted by hand (`format.ts`) rather than with `toLocaleString`/`Date`. Originally this was to avoid a hydration mismatch — ICU group separators differ between Node and browser builds, and the figures were prerendered. The figures are now client-side, but the convention stays: the output is identical everywhere, and `formatDate` in particular reads the UTC timestamp as a string rather than constructing a `Date`, which would shift the poll date across a day boundary for anyone west of Greenwich. `sourceLine` joins the provenance fragments with `·`, skipping whichever haven't loaded yet so no separator is left dangling.
-  - **The map's scale is _diverging_, not sequential** (`DEVIATION_CLASSES` in `unemployment.ts`): colour encodes how far a municipality sits from the whole-country rate in percentage points, with a neutral grey at the national figure, green below it and red above. `colorFor(rate, reference)` therefore takes the reference rate — always the **national** one (`countryRate`, carried on both region payloads), so a municipality never changes colour when the region toggle flips. This replaced a green→red sequential ramp whose middle classes were muddy olive/brown, which is the unavoidable cost of dragging one hue to another while keeping lightness monotone; anchoring on the national rate removes the middle entirely and makes the colour answer a sharper question. Each coloured arm is its own single-hue ramp running light (at the midpoint) to dark (at the extreme), so magnitude survives when hue collapses under red-green colour blindness — **both arms pass all four checks** of the `dataviz` skill's `validate_palette.js --ordinal` against the map sheet colour. Re-run that if you re-pick them; don't eyeball it. Band edges (±0.75 / ±2 / ±4 points) were chosen against the real distribution, giving roughly 78/84/45/46/22/20/9 municipalities per class. Municipalities with no rate are **hatched** via an SVG `<pattern>`, not given a fourth flat grey that would read as a data class — the pattern is sized off the viewBox because that is in metres, not pixels.
-  - **Typography**: Archivo, self-hosted from `static/fonts/` rather than Google Fonts, so the static bundle keeps zero third-party requests. Both variable axes are used and the **width axis carries hierarchy alongside size**: `.display-wide` (112% stretch, tight tracking) for headings and figures, `.stat-label` (88% stretch, uppercase, letterspaced, 11px) for the micro-labels that name each figure. That pairing is what makes the panel read as a statistical table rather than a stack of form rows. `font-variant-numeric: tabular-nums` is set on `body` because every figure on the page sits in a column that has to line up. Both are defined in `src/app.css` alongside the DaisyUI theme; if you add a subset beyond latin/latin-ext, add the matching `@font-face` there.
-  - **Personal-interest slice**: `static/data/software_occupations_register_kunnat_12ti.json` (PxWeb table 12ti) adds unemployed jobseekers and open vacancies for three occupation groups — web/multimedia developers, applications programmers, and software/app developers n.e.c. (codes 2513/2514/2519) — broken down by municipality _and_ occupation group. `src/lib/interactive/softwareJobs.ts` sums the three groups per area into one figure; it never colours the map, only the side panel (`softwareStats`, rendered via a `{#snippet softwareJobsBlock()}` shared by the hovered/selected and national branches). Suppression here is handled more carefully than in the main register file: because a _sum_ of three PxWeb cells is involved, a partially-suppressed area (some groups known, some `'...'`) would silently understate the total if nulls were just skipped — so each figure carries an `...IsMinimum` flag recording that it's a lower bound. The panel doesn't currently surface that flag (by request — no `+` markers in the UI), but it's computed and tested so a future caveat/tooltip has it to hand.
-  - **Regional toggle**: a "Finland" / "Tampere Metro" tab pair switches the whole page between the whole country and Tampereen kaupunkiseutu (8 municipalities: Tampere, Kangasala, Lempäälä, Nokia, Orivesi, Pirkkala, Vesilahti, Ylöjärvi — hand-maintained in `src/lib/interactive/regions.ts`'s `TAMPERE_REGION.natcodes`, since no seutukunta→kunta membership table exists anywhere in the source data). It's a client-side `$state` toggle, not a second route: `+page.server.ts` calls the shared `src/lib/interactive/loadGeometry.ts` once per tab at build time, each from its own dedicated geometry file, and ships all three payloads in one page; `liveData.ts` then joins the fetched figures onto each of them and `+page.svelte` picks between them via a `view` derived value. `toFinlandMap` gained an optional `paddingRatio` param (default `0`, unused by the whole-country call) because a bbox tightly fitted to 8 contiguous municipalities has no margin the way the country's irregular coastline gives for free. There's no pre-aggregated row for a hand-picked region the way `SSS` covers the whole country, so the region's headline rate/counts and software-jobs figures are rolled up in JS from the same per-kunta numbers the map renders — `aggregateKuntaStats` (`unemployment.ts`) and `aggregateSoftwareJobStats` (`softwareJobs.ts`), both summing each field independently and recomputing the rate from the summed values rather than averaging per-kunta rates (municipalities vary hugely in size). Because the toggle doesn't remount the component, `switchRegion` explicitly resets `hovered`/`selectedCode`/`search` — a route change would clear these for free, a `$state` flip does not. The Työttömyysaste survey row is hidden on the regional view (national-only, no regional breakdown to pair it with). The SVG `aria-label` and the panel's no-selection fallback name default to `'Finland'`, matching what `playwright/interactive.spec.ts`'s original assertions already expected, so introducing the toggle needed no edits to that existing coverage.
-- **Interactive population map** (`src/routes/interactive/population`) colours by **population change** — last year's net change per 1 000 inhabitants — over the same three geometry files and the same shell. (It showed density first; density is now a panel stat, and the land-area join below still feeds it.) Its source is `static/data/population_register_kunnat_121w.json`, a Tilastokeskus PxWeb export (table 121w, Väestönmuutokset by year), parsed by `population.ts`. Two structural differences from the unemployment map drive most of its code:
-  - **The mapped measure isn't a column either.** Change is `kokmuutos` ÷ `vaesto` × 1 000, computed in `population.ts`. It is **relative on purpose**: mapping the raw headcount would light up the five largest cities (Helsinki +10 374) and leave 300 municipalities indistinguishable near zero — re-encoding population size rather than change. Per 1 000 puts Kökar's −16 people (−75,8) and Helsinki's +10 374 (+14,9) on one scale. The denominator is the published end-of-period stock rather than a mid-year mean; the difference is a fraction of a per-mille at these rates and it keeps the figure reproducible from two columns of one file.
-  - **Density is still computed and shown** in the panel: `vaesto` ÷ the geometry's `landarea` (official maa-pinta-ala, water excluded, so lake-heavy municipalities aren't diluted). `landArea` rides along on every area from `toFinlandMap` — nothing else joins those two.
-  - **The export has no region rows** (309 rows: whole-country `SSS` + the 308 municipalities), and the maakunta GeoJSON has no `landarea` either — so _both_ inputs of the Region tab have to be rolled up from municipalities. `membership.ts` derives kunta → maakunta membership geometrically (largest-ring centroid, point-in-polygon), which beats hand-maintaining 308 assignments and stays correct if a geometry file is replaced. It runs in `+page.server.ts` — it needs the GeoJSON, so it cannot move to the client — and its result rides along on the payload as `membersOf`. `assertCompleteAssignment` fails the **build** if any municipality lands in zero or several regions. When written, the derived grouping reproduced all 19 of the unemployment export's official `MK` totals exactly (bar Ahvenanmaa, which differs only by its suppressed municipal cells) and the summed land areas match the published maakunta figures — that cross-check is the reason to trust it.
-  - `loadPopulationViews` (in `liveData.ts`) builds all three tabs in one call, on the client, precisely because the Region view is derived from the municipal one: `+page.server.ts` ships a `membersOf` map (maakunta code -> its municipalities, derived geometrically at build time) so the browser can roll the Region tab up without ever seeing the GeoJSON. Each view carries a `total` shaped like an area, so the panel reads one type whether or not something is selected.
-  - **The scale is diverging around zero** (`CHANGE_CLASSES` in `population.ts`), reusing `DIVERGING_SCALE` — growing is green, shrinking is red, and zero is a real midpoint rather than a chosen one. Band edges (±2 / ±7 / ±15 per 1 000) come from the real distribution, giving roughly 69/91/53/23/42/23/7 municipalities per class; 227 of 308 shrank in 2025, so the map leans red, and that is the finding rather than a scaling artefact. There's **no swatch legend**, same as the other maps, and for the same reason: the panel's chip is tinted with the exact fill the map used and carries the number that explains it. (An earlier version of this map coloured by _density_ on a sequential violet ramp — `DENSITY_CLASSES`, `inkOnDensity` — and that ramp was deleted with it. Density is a panel stat now, and **every map on the site diverges**; there is no sequential palette left in the codebase.)
-  - **Annual, not monthly, deliberately.** The monthly sibling table (12as) carries the identical year-end väkiluku, so the map is the same either way — but its flows are a single December's, which in a small municipality is 0 or ±1 and seasonally skewed (student moves land in August–September). The annual figures are the ones that say something: the country's natural change is −13 377 against net migration +31 233, so Finland shrank naturally and still grew. The panel labels the span ("Change during 2025") because a change figure without one is meaningless.
-  - **Net change is not the sum of the two flows**, and the panel says so. Kokonaismuutos (`kokmuutos`, what the map is drawn from) is natural change + net migration + **Väkiluvun korjaus** (`vakorjaus`) — register corrections with no birth, death or move behind them. It's nonzero for 220 of the 308 municipalities in 2025 and −946 nationally, so "What moved it" would visibly fail to add up without it (Föglö: −5 and +11 against a headline +10). `population.ts` parses it as `correction`; the panel renders a third row **only when it's nonzero**, sparing the other 88 municipalities a row of "±0". Don't recompute `totalChange` from the flows instead — the published figure is what reconciles the population stock from one year-end to the next.
-  - `population.ts` parses **either table**: this statistics family shares column names but not their prefix (`ssaaty-vaesto` in 121w, `kuol-vaesto` in 12as), so columns are matched on the suffix after the last `-`; and the two disagree on key order (`[area, month]` vs `[year, area]`), so the area is identified by shape (`SSS` or a `KU`/`MK`/`SK`/`ELY` prefix) rather than by position. Dropping in a newer year's export should need only the rename and the import path.
-  - Each map renders its own period (population 2025, income 2024, education 2025, age 2025, unemployment June 2026) rather than a site-wide one — the sources are on independent release cycles. A view built from several tables passes `periodLabel` on its `ShellView` to override that line with all of them ("June 2026, 2025 & 2024", deduplicated), which is what the compare map does.
-- **Interactive income map** (`src/routes/interactive/income`) colours by **median disposable income per consumption unit**, over the same three geometry files and the same shell. Its source is `static/data/income_register_kunnat_14ww.json` (PxWeb table 14ww, "Tulotaso, tuloerot, pienituloiset ja perusturvan varassa olevat asuntoväestössä alueittain", annual, currently 2024), parsed by `income.ts`. It is the simplest of the four to fetch — the table's only dimensions are area and measure, so the generic `build_query` rules cover it with no `select` and no script change — but the measure itself carries the constraint that shapes the whole page:
-  - **A median is not additive, and `income.ts` therefore has no `aggregate*Stats` function.** The other maps roll a hand-picked region up because their measures are ratios of counts: sum `unemployed` and `labourForce` across municipalities, divide, and the region's rate is _exact_. A median is the middle of a line-up, and eight separate middles don't locate the middle of the merged one without the household-level distribution, which the export doesn't ship. Same for `gini` and `lowIncomeRate`. The absence of that function is deliberate — there is a comment in the module saying so, because the obvious "fix" is to add one.
-  - Consequently the Region tab reads **14ww's own published `MK` rows** (Tilastokeskus computed those from the microdata) via the `areaPrefix` parameter, exactly as the unemployment map reads 12r5's — not a roll-up. And the **Tampere Metro tab has no headline figure at all**: `IncomeView.total` is `null` there, and the panel says a median can't be combined rather than averaging one. The published seutukunta row `SK064` is _not_ a stand-in — it covers 11 municipalities against the metro's 8 (asuntoväestö 432 667 vs 414 450). The map still colours and hovers all eight normally.
-  - **The source label matters.** The export's own `source` string reads "tulonjakotilasto", whose national headline figures come from a sample survey — but these municipal figures come from that statistic's register-based _total_ dataset, which is what makes a 308-municipality breakdown possible at all. The Sources popover says so explicitly; don't reword it into a survey figure.
-  - Columns are matched **on the suffix after the last `-`**, like `population.ts`, because this one export mixes the two forms: `tjt-ekvikturaha_med` and `tjt-henkiloita` carry the prefix while `gini_kturaha` and `rpt_aste` don't (a code with no `-` is its own suffix). Matching is exact on purpose — `rpt_aste` shares the file with `pit_rpt_aste`, `rpt_aste_rkoy5` and `rpt_l_aste`.
-  - **The scale is diverging around the national median**, reusing `DIVERGING_SCALE` but with the arms the other way up from the unemployment map, since here a high figure is the good direction. `incomeColorFor(median, reference)` takes the national figure as a parameter so a municipality never changes colour when the tab flips. Bands are **percentage** deviations (±4 / ±8 / ±12 %) rather than absolute euros, giving roughly 23/72/76/83/20/16/18 municipalities per class; the panel chip carries the same percentage, because "+1 365 €" is arithmetic the reader still has to scale. The map leans red — the municipal median (29 079 €) sits below the national one (30 523 €), since the big cities pull the national figure up — and Kauniainen sits alone at +63 %, nearly three times the next deviation, which is why the top class is open-ended. No swatch legend, same as the others.
-- **Interactive education map** (`src/routes/interactive/education`) colours by the **share of the 15+ population holding a tertiary degree**, over the same three geometry files and the same shell. Its source is `static/data/education_register_kunnat_12bs.json` (PxWeb table 12bs, "15 vuotta täyttänyt väestö koulutusasteen … mukaan", annual, currently 2025), parsed by `education.ts`. Register data — every degree awarded in Finland since 1970 is in the tutkintorekisteri, so it's a count, not an estimate; the blind spot is a degree earned abroad and never registered here, which nudges the "no post-basic" share up where there are many recent immigrants. Four things make it different from the other three:
-  - **It is the one map whose midpoint is not the national figure, and the data is why.** It diverges around the **median municipality** (24,5 %), not Finland's own share (34,5 %). The national figure counts _people_, and degree-holders concentrate in a few cities, so **only 42 of the 308 municipalities reach it** — pivoting there colours 86 % of the map red and leaves five areas in the two green classes, which is true and no help at all in telling one red municipality from another. (The income map survives the same structure only because its gap is 5 % rather than 41 %.) Half the municipalities sit above 24,5 % and half below, which is a midpoint a map _of municipalities_ actually has. `EDUCATION_CLASSES` reuses `DIVERGING_SCALE` with edges at ∓1 / ∓3 / ∓5 and +1 / +4 / +9 points, giving 35/35/55/47/46/43/47 per class. The green arm is stretched wider because the distribution is: the red side spans 11,5 points below the median, the green side 36,6 above it, with Kauniainen alone at 61,1 %. The reference is `medianShare` on every view (computed from the 308 municipal figures, on the Region tab too), so an area never changes colour when the tab flips — same discipline as `countryRate`.
-  - Because the midpoint moved, so did the chip: it reads "+22,1 pts **vs median municipality**", not vs Finland. That is deliberate and shouldn't be "fixed" back — the chip is tinted with the fill the map used, so its number has to answer the same question the colour does. The national share doesn't disappear: the no-selection panel _is_ Finland's figure, and a line under it names the midpoint and says Finland sits 10,0 pts above it, which is the whole explanation in one sentence. Percentage **points**, not the income map's percent, because the measure is itself a percentage.
-  - A sequential single-hue purple ramp was built first and **rejected in review as harder to read** — decoding lightness is work that hue does for free. If it's ever revisited, the steps that passed `validate_palette.js --ordinal` against `MAP_SURFACE` are recorded in a comment above `EDUCATION_CLASSES`; note that blue is unavailable for a ramp because `SELECTED_FILL` is blue.
-  - **`aggregateEducationStats` exists, and that is the point of contrast with `income.ts`'s deliberate absence of one.** A share of a headcount is exactly aggregable: sum `kaste5T8`, sum `vaesto_15_`, divide. Summing all 308 reproduces the published national share (34,51 against 34,5), so the Tampere Metro tab gets a real headline (39,3 %) where the income map honestly has none. The Region tab still reads 12bs's own published `MK` rows via `areaPrefix` — it could be rolled up exactly, but the published figure is the one to show when there is one. The exception is `vktm`, the education level index: it averages the **20+** population and only the 15+ headcount is published, so it's null on a roll-up and the panel shows "—" with a hint saying why.
-  - Two shapes no other export has: keys are `[year, area]` (14ww's are `[area, year]`), and the file carries `MA1`/`MA2` — mainland Finland and Åland — alongside `SSS`, `MK` and `KU`. The prefix filter drops them without a special case. Column matching is on the suffix after the last `-` like the other annual tables, and **exact** matching matters more here than anywhere: fifteen measures whose codes are prefixes of one another (`kaste3` beside `kaste3T8` and `kaste3osuus`, `kaste5` beside `kaste5T8`), so a `startsWith` would silently read a different level of education.
-- **Interactive age map** (`src/routes/interactive/age`) colours by the **mean age of the population**, from `static/data/age_register_kunnat_11ra.json` (PxWeb table 11ra, "Tunnuslukuja väestöstä alueittain", annual, currently 2025), parsed by `age.ts`. It's the mirror image of the education map in almost every respect, which is the quickest way to hold both in your head:
-  - **Same midpoint problem, same fix, opposite direction.** The national mean is 44,1 years but the median municipality is 48,6 — the national figure counts people and young people live in cities, so **only 58 of the 308 municipalities are below it**. `AGE_CLASSES` therefore pivots on `medianAge`, the median of the 308, carried on every view exactly like the education map's `medianShare`. Band edges ∓1 / ∓3 / ∓6 years give 34/48/42/51/45/52/36 per class — the evenest spread on the site, because age varies smoothly across Finland where money and degrees do not.
-  - **Green is young, red is old — and that direction is a judgement, not a finding.** It matches the compare map's `higherIsBetter: false` for this indicator, chosen deliberately; the Sources popover says so in as many words rather than letting the colours imply it's a fact. If the judgement is ever revisited, both places have to move together.
-  - **The roll-up must be population-weighted** (`aggregateAgeStats`). A mean combines exactly — unlike the income map's median — but only as `Σ(age × population) / Σ(population)`; averaging eight municipal means unweighted would give Vesilahti (3 500 people) the same say as Tampere (250 000). That's why `AgeStats` carries `population` at all: it's the weight, never rendered. The two age shares are weighted the same way.
-  - The export is the site's busiest for area levels — **sixteen** of them in 568 rows (seutukunnat, ELY centres, hospital districts, electoral districts, mainland/Åland …). The numeric-code filter drops all but `KU` and `MK` without a case of its own. It's also a _key-figures_ table: 43 measures, narrowed to four by `select` in the fetch script, since a content variable has no total to omit its way to.
-- **The map switch names each map for the measure it maps, not its topic**: "Unemployment rate" (the registered rate, not the topic of unemployment), "Population change" (last year's change, not a headcount), "Median income" (the median, not the topic of income), "Higher education" (the share with a degree, not the topic of education), "Average age" and "Compare". Those labels live in the `maps` array in `src/routes/interactive/+layout.svelte`, and each page's `<title>` and `metric` prop (the SVG's accessible label, "Unemployment rate by municipality in Finland") match them — change one and the e2e specs that address the map by that label need the same edit. `.map-switch` wraps, because six pills are wider than a phone.
-- **Compare map** (`src/routes/interactive/compare`) is a **composite score**, not a published statistic: one 0–100 figure per area, folded from the indicators the other maps show. Education and age landed as its fourth and fifth indicators; housing is the medium-term next one — each becomes one more entry in `INDICATORS` (`liveData.ts`) and nothing else changes shape. The formula lives in `src/lib/interactive/score.ts`, kept free of Svelte, geometry and fetching so it is testable on its own.
-  - **Percentile rank, not z-score or min–max.** Each indicator becomes "better than X % of the areas ranked", and the score is the weighted mean of those ranks. The measures are on incompatible units (a percentage, a per-mille change, a euro amount) and one has a long tail — Kökar's −75,8 per 1 000 is four times the next value — so min–max would let one municipality compress everyone else and a z-score would pin the tail at its clamp. The cost is magnitude, paid for by showing every raw figure beside its percentile in the panel (`9,5 % · 62`). `percentileRanks` gives ties the average of the ranks they span, excludes nulls from the denominator, and uses an `n - 1` denominator so the best is exactly 100 and the worst exactly 0.
-  - **An area is scored only when _every_ indicator is published for it** (`MIN_COVERAGE = 1`). This is the load-bearing decision on the page, not a placeholder: scoring an area on the subset it happens to have silently re-weights those indicators to 100 %, and run that way over the real exports **Föglö came out first of 308** — it has no published unemployment rate (four Åland municipalities don't), so its score was its population change alone. The four unscored areas are hatched via `url(#no-data)` at the page's `fillFor`, like every other missing figure, and the panel names the missing indicator. Neither education nor age narrowed that set — 12bs and 11ra both publish for all 308 — so it is still exactly the four Åland municipalities. Now that there _are_ five domains the constant could drop to ~0.6; the `isPartial` path and the panel branch for it are already built and tested.
-  - **Percentiles are per tab's own population, and municipal scores never change between tabs.** The 308 municipalities are ranked once, and the Tampere tab reuses those numbers rather than rescoring its eight — same principle as `countryRate` on the unemployment map. It must take only the _figures_ from that lookup, though: spreading the whole municipal area object onto the metro tab brings its `d` along, replacing the metro's own 20 m geometry with the coarse 2 km shapes from the whole-country file — the right municipalities at the wrong detail, inside a viewBox built for the finer ones. `liveData.spec.ts` pins the `d`, and `compare.spec.ts` asserts Nokia's path is longer than 2 000 characters on that tab. Regions are ranked among the 19, since their figures are roll-ups of a different kind of area, so **a region's score is not comparable to a municipality's**; the Sources popover says so. The Region tab reads 12r5's and 14ww's own `MK` rows for the rate and the median but has to roll population change up via `membersOf`, which is why its `+page.server.ts` is a copy of the population page's. Income _could not_ be rolled up in any case — see the income map above.
-  - The no-selection panel shows the **ends of the ranking** (top five, bottom five) rather than a national figure — a whole-country composite would be Finland's percentile among itself. It's a four-column grid (rank, name, maakunta, score) with each row a `grid-cols-subgrid` button, so the columns line up across both blocks and picking a row selects that area. That's what `select` on the `panel` snippet is for: `MapShell` hands the panel its own `selectArea`, so a panel can offer shortcuts into the map without owning the selection state. Two details that only show up on the small tabs: the lower block takes _what's left_ after the top five rather than the last five, so Tampere Metro's eight areas can't appear in both lists; and the region column is dropped when every row shares one region, which on that tab it does.
-  - The hovered/selected panel renders the breakdown as a real `<table>` — Indicator / Figure / Percentile — not as the shell's `StatRow` pairs, and with **no caption above it**: the column headers already say what it is. Two numbers of different kinds belong in two columns; they were briefly concatenated into one cell (`9,5 % · 62`) under a "figure · percentile" caption, which made every read a decode. `compare.spec.ts` addresses them with `getByRole('row', { name: 'Jobs 9,5 % 62' })`, so the columns are what's pinned.
-  - Colour reuses `DIVERGING_SCALE` around 50, which percentile ranking makes a true midpoint. `SCORE_CLASSES` bands at 10/25/45/55/75/90 are percentile bands, so each class holds a known share of areas regardless of how the underlying figures are spread. No swatch legend, same as the other maps.
-- **Static adapter**: `svelte.config.js` uses `@sveltejs/adapter-static` (`strict: true`), so every route must be prerenderable — there is no server runtime. Output goes to `./build`.
-- **Styling**: Tailwind v4 + DaisyUI, configured via the `@tailwindcss/vite` plugin (no `tailwind.config.js`) and a custom DaisyUI theme defined directly in `src/app.css`.
-  - **The theme toggle keys off `data-theme`, never off component state.** `ThemeToggle.svelte` uses DaisyUI's `swap swap-rotate`, but activated by a `html[data-theme='customtheme-dark']` rule rather than by the stock checkbox: the real theme is chosen by the blocking script in `app.html` before anything hydrates, so a `checked` attribute the prerendered HTML has to guess — or a `$state` flag set on mount — renders the wrong icon on the first frame for every dark-preference visitor, then flips. Anything else that has to look different per theme has the same constraint. The override works because component styles are unlayered while DaisyUI's sit in `@layer utilities`, so they win without a specificity fight.
-- **Testing setup**: Vitest is configured in `vite.config.ts` as a single `server` project (Node environment) covering `src/**/*.{test,spec}.{js,ts}`, excluding `*.svelte.{test,spec}.ts`. Playwright (`playwright.config.ts`) builds and serves the app via `npm run build && npm run preview` on port 4173 before running specs in `playwright/`.
-- **Deployment**: Docker image (`Dockerfile`) is just Nginx serving the prebuilt `./build` directory. `cprod.yml` is the production `docker compose` definition (expects an external `proxy` network and `./nginx/nginx.conf`); `deploy.sh` recreates the container from the latest pulled image. CI (`.github/workflows/main-build-test-release.yml`) builds, tests, and on push to `main` publishes the image to Docker Hub as `oskarwestmeijer/maps`.
-- **Statistics refresh** is a separate, image-free path: `.github/workflows/refresh-data.yml` runs daily, SSHes into `/deployments/maps` with the same secrets `deploy.yml` uses, and runs `python3 scripts/fetch_statfi.py --out ./data`. `cprod.yml` mounts that `./data` directory read-only at `/srv/live/data`, and `nginx.conf`'s `location /data/` serves it with `try_files $uri @baked_data` — mounted file first, then the copy inside the image. That ordering is what makes an empty or missing mount harmless: the maps fall back to the vintage they were built with rather than going blank, and no container restart is ever needed. Responses are `Cache-Control: no-store` so a refreshed file is picked up on the next load.
+### The load-bearing split: geometry is build input, statistics are runtime data
 
-## Adding a domain (housing)
+GeoJSON lives in `src/lib/interactive/`, is converted to SVG paths at build time, and is baked into
+the prerendered page. It must **never** ship as a public asset. The PxWeb statistics live in
+`static/data/`, are served at `/data/`, and are fetched by the browser on page open
+(`liveData.ts`). That is what lets `fetch_statfi.py` refresh figures on the production host with no
+rebuild, redeploy or restart. Consequences:
 
-Income, education and age all landed this way (`tjt/14ww`, `vkour/12bs` and `vaerak/11ra`, each with its own map page and an `INDICATORS` entry). The planned direction is one more indicator per domain, each feeding the compare map's score, with its own map page only where it earns one. The path is deliberately five small steps:
+- `+page.server.ts` ships shapes with **every stat field present and null**. First paint is an
+  outline map with hatched fills and em dashes; that null state _is_ the loading state.
+- **Playwright assertions on figures or fills must auto-retry** (`toHaveAttribute`, `toBeVisible`),
+  never a bare `await locator.getAttribute('fill')` — a one-shot read races the fetch and sees
+  `url(#no-data)`. `fits-one-screen.spec.ts` waits for the period line before measuring.
+- Nothing in `liveData.ts` throws. A 404 or malformed file leaves that file's figures null; the
+  eight files are independent, so a lagging 12ti empties the software-jobs block while the map
+  still colours from 12r5.
+- The conversion must run in `+page.server.ts`, not a universal `+page.ts`: a universal load's
+  `fetch` is inlined into the prerendered HTML for replay, which embedded the whole 475 kB GeoJSON.
 
-**Household debt (`velk/157y`, `velk/15c1`) is the obvious next one, and the script change it needs is already done.** Those tables carry the same kind of unwanted breakdowns 12bs did, and the `omit` rule added for it covers them — declare the markers, and `build_query` narrows the query the same way. Note that **municipal finance is not available from Tilastokeskus at all** — there is no kuntatalous database among StatFin's 135 sections; those statistics moved to Valtiokonttori, a different publisher and API.
+### Routing
 
-1. Add the table to `TABLES` in `scripts/fetch_statfi.py` with its `required_contents` and `min_rows` — plus an `omit` rule and a `max_rows` ceiling if it declares breakdowns the map doesn't want, or a `select` if it's a key-figures table whose measures need narrowing (11ra) — and run the script. The validator refuses to overwrite good data with a bad response, so a renamed column fails loudly rather than silently emptying a map.
-2. Add a parser module beside `population.ts`, matching columns by the suffix after the last `-` (that convention is what lets a sibling table drop in) and reading the period out of the file rather than the filename.
-3. Add the file to `FILES` in `liveData.ts`, add a field to `CompareArea` (and to `blankArea`), and join it in `loadCompareViews` — `join` takes one accessor per indicator field, so this is a key rather than a new parameter. Decide the region rule here: either the export has `MK` rows (12r5, 14ww, 12bs) or it needs a `membersOf` roll-up plus an `aggregate*Stats` function (121w) — and check the measure can be aggregated at all before reaching for the latter. All four cases are on the site now: a plain count just sums (`aggregatePopulationStats`), a ratio of counts aggregates exactly (`aggregateEducationStats`), a mean aggregates exactly **but only weighted** (`aggregateAgeStats`), and a median cannot be aggregated at all (`income.ts`, and the comment there saying so).
-4. Add one entry to `INDICATORS` (`liveData.ts`): `valueOf`, `format`, `higherIsBetter`, `weight`. The panel, the colour scale, the ranking and the coverage rule all pick it up with no further edits.
-5. Optionally give it its own map page, which is a `+page.server.ts`/`+page.svelte` pair around `MapShell` plus a pill in the interactive layout, and an entry in `fits-one-screen.spec.ts`'s `maps` list. Also add the new period/source/poll fields to `CompareView` and to the compare page's Sources popover, "What goes into it" list and `failed` guard, which name every table explicitly.
+File-based under `src/routes`; root `+layout.svelte` is the navbar/footer shell. `/interactive` is
+**not a page** — it's a shelf, one nested route per map, whose `+page.ts` redirects to
+`/interactive/unemployment` and whose `+layout.svelte` renders the pill switch. Gallery content is
+a single source of truth in `src/lib/maps.ts` (add an entry, drop images in `static/` and
+`static/hd/`).
 
-Watch the panel height as domains land — every indicator is another row, and `fits-one-screen.spec.ts` now asserts the card stays inside `main` at three desktop sizes rather than merely that the document doesn't overflow.
+### Shared map machinery (`src/lib/interactive`)
+
+All seven maps render inside `MapShell.svelte`, which owns the Finland/Region/Tampere tabs, the SVG
+with hover/click/keyboard and the no-data hatch, the search box, the period + Sources popover row,
+and the one-viewport desktop layout. A page supplies `metric`, `fillFor`, `valueLabel` and two
+snippets (`panel`, `sources`); the shell owns `hovered`/`selectedCode`/`search`, and `region` is
+`$bindable`. **Changing the shell changes all seven maps** — `fits-one-screen.spec.ts` covers them all.
+
+Beside it: `StatRow.svelte`, `format.ts`, `views.ts` (`RegionId`/`ShellView` types live in a module
+because a Svelte component can't export types from its instance script), `loadGeometry.ts`,
+`membership.ts`, `regions.ts`, `score.ts`, and one parser per table.
+
+- **Geometry**: `finland_kunnat_2km.geojson` (308 municipalities), `finland_maakunnat_500m`,
+  `tampere_kunnat_20m`. CRS is **EPSG:3067**, already planar metres — no reprojection; coordinates
+  are emitted `x,-y` and the viewBox does the scaling. Replace a file to update a map.
+- **Every panel names the hovered municipality's maakunta.** It rides on each area as `regionName`,
+  derived geometrically by `membership.ts` (largest-ring centroid, point-in-polygon) and shipped as
+  `membersOf` — the exports carry region _totals_, never a membership list. So **every**
+  `+page.server.ts` calls `assignToRegions`/`assertCompleteAssignment`, which fails the build if a
+  municipality lands in zero or several regions. Empty on the Region tab and on roll-ups.
+- **Regional toggle** is a client-side `$state` flip, not a route: all three payloads ship in one
+  page. Because the component doesn't remount, `switchRegion` must reset
+  `hovered`/`selectedCode`/`search` explicitly. Tampere Metro's 8 municipalities are hand-listed in
+  `regions.ts` (no seutukunta→kunta table exists in any source). `toFinlandMap`'s `paddingRatio`
+  exists because a bbox around 8 contiguous municipalities has no natural margin.
+- **Hand-rolled formatting** (`format.ts`), never `toLocaleString`/`Date`: output is identical
+  everywhere, and `formatDate` reads the UTC string rather than constructing a `Date`, which would
+  shift the poll date west of Greenwich. `sourceLine` joins fragments with `·`, skipping missing ones.
+- **Typography**: Archivo, self-hosted (zero third-party requests). The width axis carries
+  hierarchy: `.display-wide` for headings/figures, `.stat-label` for micro-labels;
+  `font-variant-numeric: tabular-nums` on `body`. Defined in `src/app.css`.
+- **No swatch legend on any map, deliberately.** Its job is done by the search box plus the panel's
+  **chip** — tinted with the exact fill the map used and carrying the number that explains it.
+  Don't reintroduce one. Clicking a municipality or picking a search result sets a persistent
+  `selectedCode` (blue, `SELECTED_FILL`); `hovered` only previews; `displayed = hovered ?? selected`.
+
+### One-viewport layout
+
+`main` is `lg:h-[calc(100dvh-var(--map-chrome,9.5rem))]` — 9.5rem is navbar + footer, and the
+interactive layout raises `--map-chrome` to 12.9rem for its pill switch. Re-measure if either
+changes. The tinted sheet is `min-h-0 flex-1` and stays the same size in every region (the SVG
+letterboxes inside it; sizing per region made the frame jump on tab change). Below `lg` it stacks
+and scrolls. `fits-one-screen.spec.ts` asserts, at three desktop sizes, both that the document
+doesn't overflow **and** that the panel card stays inside `main` — every new indicator is another
+row, so that spec is what catches a panel growing past the fold.
+
+### The seven maps
+
+Every map: same three geometry tabs, same shell, `DIVERGING_SCALE` colours (green good, red bad),
+seven classes unless noted, band edges picked against the real distribution.
+
+| Map            | Measure                                              | Scale pivots on         | Region tab      | Metro tab               |
+| -------------- | ---------------------------------------------------- | ----------------------- | --------------- | ----------------------- |
+| `unemployment` | registered unemployment rate (`TYOTOSUUS`, 12r5)     | national rate           | 12r5 `MK` rows  | roll-up                 |
+| `population`   | change per 1 000 (`kokmuutos`÷`vaesto`, 121w)        | zero                    | roll-up         | roll-up                 |
+| `income`       | median disposable income per consumption unit (14ww) | national median         | 14ww `MK` rows  | **none possible**       |
+| `education`    | share of 15+ with a tertiary degree (12bs)           | **median municipality** | 12bs `MK` rows  | roll-up                 |
+| `age`          | mean age (11ra)                                      | **median municipality** | 11ra `MK` rows  | weighted roll-up        |
+| `balance`      | distance from a 50/50 sex split (11re)               | 50 %, a constant        | roll-up         | roll-up                 |
+| `compare`      | composite 0–100 score                                | 50th percentile         | ranked among 19 | municipal scores reused |
+
+Per-map facts that aren't obvious from that table:
+
+- **unemployment** — the metric is the _register_ rate, not Tilastokeskus's headline työttömyysaste
+  (Labour Force Survey, no municipal breakdown). Both are official statistics; the distinction is
+  **register vs sample survey**, not official vs unofficial, and the Sources popover says so in two
+  badged sections. **Don't reword it into "official vs survey".** Both national rates are shown side
+  by side on purpose (135z, `tyottaste_trendi`, looked up by column **code** — `Työttömyysaste, %`
+  is a strict prefix of the trend and adjusted columns); removing one makes the other read as a bug.
+  `TYOVOIMATK` is ~2 years older than the monthly counts. Total population is not in this export.
+- **population** — annual, not the monthly sibling 12as: a single December's flows are 0 or ±1 in a
+  small municipality and seasonally skewed. **Net change ≠ natural change + net migration**: the
+  published `kokmuutos` also contains `vakorjaus` (register corrections), nonzero for 220 of 308, so
+  the panel renders it as a third row when nonzero. Don't recompute `totalChange` from the flows.
+  Density is a panel stat (`vaesto` ÷ the geometry's `landarea`), not the mapped measure.
+- **income** — **a median is not additive**, so `income.ts` deliberately has **no** `aggregate*`
+  function; there's a comment saying so because adding one is the obvious "fix". Hence the metro tab
+  has no headline at all (`total: null`) and says why. `SK064` is not a stand-in: 11 municipalities
+  against the metro's 8. The municipal figures come from tulonjakotilasto's register-based **total**
+  dataset, not its sample survey — don't reword that either.
+- **education / age** — both pivot on the **median municipality**, not the national figure, because
+  the national one counts _people_: only 42 of 308 reach the national degree share, and only 58 are
+  below the national mean age. Pivoting nationally paints ~86 % of either map one colour. The
+  reference (`medianShare` / `medianAge`) rides on every view so colours don't move between tabs,
+  and the chip therefore reads "vs median municipality" — the chip must answer the same question its
+  tint does. Age's green-is-young direction is a **judgement**, stated as such in its popover, and
+  paired with `higherIsBetter: false`; move both together. `aggregateAgeStats` must be
+  **population-weighted**. A sequential purple ramp was tried for education and rejected as harder
+  to read than hue; its validated steps are recorded in a comment above `EDUCATION_CLASSES`.
+- **balance** — measures distance from parity, so **it has no sign**: 52,2 % and 47,8 % women take
+  the same colour. Green/red runs over that single magnitude the way `SCORE_CLASSES` does, six
+  classes, no midpoint. A purple/orange scale encoding _which_ sex led came first and was rejected
+  as undecodable without a legend; reframing as balance is what made green/red honest. Direction
+  lives in the panel (share + both counts), not the map.
+
+### Parsers, and the shapes that bite
+
+One module per table, all sharing conventions: columns matched **on the suffix after the last `-`**
+(exports mix `tjt-ekvikturaha_med` with `gini_kturaha`; a code with no `-` is its own suffix),
+matching **exact** (`rpt_aste` sits beside `pit_rpt_aste`; `kaste3` beside `kaste3T8`), the period
+read from the file rather than the filename, and the area identified **by shape, not position**
+(key order differs per table and has changed before). A row's `values` holds **only** the content
+columns (`type: 'c'`), so indexes resolve against that filtered list. Suppressed cells are `'...'`
+or `'.'` and must stay `null`, never 0. Only numeric `KU###`/`MK##` codes are mapped — exports also
+carry `SSS`, `SK`, `ELY`, `MA1`/`MA2`, `KUJOU`, and 11ra's sixteen area levels.
+
+Two exceptions worth knowing:
+
+- **`softwareJobs.ts`** sums three occupation groups (2513/2514/2519) per area, so a partially
+  suppressed area would understate silently; each figure carries an `...IsMinimum` flag. Computed
+  and tested, not surfaced in the UI (by request).
+- **`balance.ts`** gets three rows per area (total/men/women) and must pivot them, and its
+  whole-country key is `['SSS','SSS','2025']` — area code and sex code are the same string, so
+  pattern-matching picks the wrong one. `dimensions()` resolves positions from `columns` instead.
+
+### Aggregation rules (all four cases are live)
+
+A plain count sums (`aggregatePopulationStats`). A ratio of counts aggregates exactly through its
+numerator (`aggregateEducationStats`, `aggregateBalanceStats`) — recompute from the sums, never
+average the members' ratios. A mean aggregates exactly **only weighted** (`aggregateAgeStats`). A
+median cannot be aggregated at all. Check which case a new measure is before reaching for a roll-up.
+
+### The refresh script (`scripts/fetch_statfi.py`)
+
+Eight tables under `https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin`: `tyonv/12r5`, `tyonv/12ti`,
+`ssaaty/121w`, `tjt/14ww`, `vkour/12bs`, `vaerak/11ra`, `vaerak/11re`, `tyti/135z`. A `POST` with
+`{"response":{"format":"json"}}` returns exactly the shape the parsers read, written verbatim —
+moving to a new period needs no code change.
+
+Variables are resolved from the PxWeb metadata, never hardcoded, because Statistics Finland renames
+codes (the 8.6.2026 change did; `alue_23_20260101` is already dated):
+
+- time variable = the one flagged `time`, `top 1`;
+- `select` narrows a variable to marker-identified values (12ti's occupations, 11ra's 43 measures);
+- `omit` drops an `elimination: true` variable entirely so PxWeb returns its own total — this is
+  what turns 12bs's 14 850 rows into 330. Keyed by **several** markers, because `SSS` is offered by
+  the area, age and sex variables alike. Two guards, since failure here is silent: a rule matching
+  no variable raises, and so does omitting a variable that is no longer eliminable.
+
+**It validates before writing**: required content columns present, an `SSS` row, `min_rows` (a floor
+catches a table that stopped publishing) and `max_rows` (only a ceiling catches a query that stopped
+narrowing). On failure it exits non-zero and leaves the previous file untouched.
+
+Output says **written** or **left alone** (byte-identical — the usual case); "left alone" is not a
+failure. Files are named `<measure>_<source type>_<scope>_<pxweb-table-id>`, with no period in the
+name since they're overwritten in place. `manifest.json` carries three dates per file — `period`
+(what the figures describe), `updated` (when Statistics Finland published), `polled` (when we last
+asked); only `polled` moves on a no-change run and only `polled` is rendered. It is **gitignored**,
+so it's absent from a fresh clone and the built image until the script runs — the maps then omit the
+poll date, and `liveData.spec.ts` synthesizes its own fixture. The manifest is **merged**, so
+`--only` or a partial failure can't drop other files' entries.
+
+### Compare map (`src/routes/interactive/compare`)
+
+A composite score, not a published statistic: six indicators, equal weights, one 0–100 per area.
+`score.ts` is kept free of Svelte, geometry and fetching so the formula is testable alone.
+
+- **Percentile rank, not z-score or min–max.** The measures are on incompatible units and one has a
+  long tail (Kökar's −75,8 per 1 000). Ties take the average of the ranks they span, nulls are
+  excluded from the denominator, and the `n − 1` denominator makes the best exactly 100.
+- **`MIN_COVERAGE = 1`** — an area is scored only when _every_ indicator is published for it. Not a
+  placeholder: scoring on a subset silently re-weights it, and run that way **Föglö came out first
+  of 308** on its population change alone. The four unscored areas are the Åland municipalities with
+  no unemployment rate; no later domain narrowed that set. With six domains this could now drop to
+  ~0.6 — the `isPartial` path is built and tested but can't fire at 1.
+- **Municipal scores never change between tabs**: the 308 are ranked once and the metro tab reuses
+  the figures. Take only the _figures_ — spreading the whole area object brings its `d`, replacing
+  the metro's 20 m geometry with 2 km shapes. Pinned in both `liveData.spec.ts` and `compare.spec.ts`.
+  Regions are ranked among the 19, so **a region's score isn't comparable to a municipality's**.
+- The **balance indicator carries a caveat the others don't**: it correlates −0,47 with log
+  population (one person is a whole percentage point in a municipality of 101), so the smallest
+  places are charged partly for arithmetic. Kept because it's the least redundant of the six (−0,24
+  against the other five's composite, where age is −0,77). Its regional figure must be **pooled and
+  then measured**, not averaged.
+- The no-selection panel shows the **ends of the ranking**, since a national composite would be
+  Finland's percentile among itself. The lower block takes what's left after the top five so the
+  metro's eight can't appear twice; the region column drops when every row shares one region.
+- **The map colours by `scorePercentile`, not by `score`** — the score's own rank among the scored
+  areas. A score is a _mean_ of percentile ranks, and a mean of ranks clusters towards the middle,
+  harder with every indicator added: the top-10 % band held 9 municipalities with two indicators and
+  **1** with six. Ranking the score first makes the band labels true by construction (31/45/61/30/61/45/31
+  of 304 today) and keeps them true as domains land. `score.spec.ts` pins it; pass the raw score to
+  `scoreColorFor` and the labels start lying again.
+- The breakdown is a real `<table>` (Indicator / Figure / Percentile) with no caption — the headers
+  say it. The two numbers were once concatenated into one cell and that made every read a decode.
+
+### Map switch, styling, build
+
+- **Each pill names the measure, not the topic** — "Unemployment rate", "Population change",
+  "Median income", "Higher education", "Average age", "Gender balance", "Compare". Labels live in
+  `+layout.svelte`'s `maps` array, and each page's `<title>` and `metric` prop must match, since the
+  e2e specs address maps by that label. `.map-switch` wraps; seven pills are wider than a phone.
+- **Styling**: Tailwind v4 + DaisyUI via `@tailwindcss/vite` (no `tailwind.config.js`), theme in
+  `src/app.css`. **The theme toggle keys off `data-theme`, never component state** — the theme is
+  chosen by a blocking script in `app.html` before hydration, so a guessed `checked` attribute or an
+  on-mount `$state` renders the wrong icon on the first frame. Anything theme-dependent has the same
+  constraint. Component styles are unlayered and DaisyUI's are in `@layer utilities`, so they win.
+- **Static adapter** (`strict: true`): every route must be prerenderable; there is no server runtime.
+- **Testing**: Vitest as a single `server` project over `src/**/*.{test,spec}.{js,ts}`; Playwright
+  builds and previews on port 4173 before running `playwright/`.
+- **Deployment**: the image is Nginx over the prebuilt `./build`. `cprod.yml` + `deploy.sh` on the
+  host; CI publishes `oskarwestmeijer/maps` on push to `main`.
+- **Statistics refresh is image-free**: `refresh-data.yml` runs daily, SSHes in, and runs the script
+  with `--out ./data`. `cprod.yml` mounts that read-only at `/srv/live/data`; nginx serves `/data/`
+  with `try_files $uri @baked_data` — mounted file first, then the copy inside the image, so an
+  empty or missing mount falls back to the built-in vintage rather than going blank. `no-store`, so
+  a refreshed file is picked up on the next load.
+
+## Adding a domain (housing next)
+
+Income, education, age and balance all landed this way. One indicator per domain, its own map page
+only where it earns one.
+
+**Household debt (`velk/157y`, `velk/15c1`) is the obvious next one**, and the script change it
+needs is already done — those tables carry the same eliminable breakdowns 12bs did, so declaring
+`omit` markers covers them. Note **municipal finance is not in StatFin at all**; it moved to
+Valtiokonttori, a different publisher and API.
+
+1. Add the table to `TABLES` with `required_contents`, `min_rows`, plus `omit`+`max_rows` or
+   `select` as needed, and run the script.
+2. Add a parser module, following the conventions above.
+3. Add the file to `FILES`, a field to `CompareArea` and `blankArea`, and an accessor in
+   `loadCompareViews`. Decide the region rule here: published `MK` rows, or a `membersOf` roll-up —
+   and check the measure can be aggregated at all first.
+4. Add one `INDICATORS` entry (`valueOf`, `format`, `higherIsBetter`, `weight`). Panel, colours,
+   ranking and coverage all pick it up. **Skip this step if the measure has no defensible better
+   direction** — a map page without an indicator is a valid outcome.
+5. Optionally a map page: `+page.server.ts`/`+page.svelte` around `MapShell`, a pill in the
+   interactive layout, an entry in `fits-one-screen.spec.ts`. Then add the new period/source/poll
+   fields to `CompareView` and to the compare page's Sources popover, "What goes into it" list and
+   `failed` guard, all of which name every table explicitly.

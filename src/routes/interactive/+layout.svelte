@@ -21,6 +21,7 @@
 		{ href: '/interactive/income', label: 'Median income', icon: '💶' },
 		{ href: '/interactive/education', label: 'Higher education', icon: '🎓' },
 		{ href: '/interactive/age', label: 'Average age', icon: '🎂' },
+		{ href: '/interactive/balance', label: 'Gender balance', icon: '👥' },
 		// The composite of the ones above (and of whatever domains follow), so it sits last.
 		{ href: '/interactive/compare', label: 'Compare', icon: '⚖️' }
 	];
@@ -61,7 +62,7 @@
 
 	.map-switch {
 		display: inline-flex;
-		/* Wraps rather than running off the side: six pills are wider than a phone. Only ever
+		/* Wraps rather than running off the side: seven pills are wider than a phone. Only ever
 		   wraps below `lg`, where the page scrolls anyway and `--map-chrome` isn't in play — if
 		   a sixth ever makes it wrap at `lg` too, `--map-chrome` owes it another row. */
 		flex-wrap: wrap;

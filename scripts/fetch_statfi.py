@@ -220,6 +220,19 @@ TABLES: tuple[Table, ...] = (
         },
     ),
     Table(
+        name="sex",
+        path="vaerak/11re.px",
+        filename="sex_register_kunnat_11re.json",
+        required_contents=("vaesto",),
+        content_suffix_match=True,
+        # 927 rows: 309 areas (whole country + the 308 municipalities — this one publishes no
+        # region rows at all) times the three values of the sex dimension, which is kept rather
+        # than omitted because it *is* the measure. Only the 102 single-year ages are dropped.
+        min_rows=900,
+        max_rows=2000,
+        omit=(("000", "001"),),
+    ),
+    Table(
         name="survey",
         path="tyti/135z.px",
         filename="unemployment_survey_national_135z.json",

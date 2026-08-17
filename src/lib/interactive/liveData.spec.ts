@@ -6,18 +6,21 @@ import population from '../../../static/data/population_register_kunnat_121w.jso
 import income from '../../../static/data/income_register_kunnat_14ww.json';
 import education from '../../../static/data/education_register_kunnat_12bs.json';
 import age from '../../../static/data/age_register_kunnat_11ra.json';
+import sex from '../../../static/data/sex_register_kunnat_11re.json';
 import {
 	emptyAgeViews,
 	emptyCompareViews,
 	emptyEducationViews,
 	emptyIncomeViews,
 	emptyPopulationViews,
+	emptyBalanceViews,
 	emptyUnemploymentViews,
 	loadAgeViews,
 	loadCompareViews,
 	loadEducationViews,
 	loadIncomeViews,
 	loadPopulationViews,
+	loadBalanceViews,
 	loadUnemploymentViews,
 	type AgeGeometry,
 	type CompareGeometry,
@@ -78,6 +81,11 @@ const manifest = {
 			period: '2025',
 			updated: '2026-05-29T05:00:00Z',
 			polled: '2026-08-11T18:39:44Z'
+		},
+		'sex_register_kunnat_11re.json': {
+			period: '2025',
+			updated: '2026-04-01T05:00:00Z',
+			polled: '2026-08-11T18:39:44Z'
 		}
 	}
 };
@@ -90,6 +98,7 @@ const DATA_DIR: Record<string, unknown> = {
 	'income_register_kunnat_14ww.json': income,
 	'education_register_kunnat_12bs.json': education,
 	'age_register_kunnat_11ra.json': age,
+	'sex_register_kunnat_11re.json': sex,
 	'manifest.json': manifest
 };
 
@@ -522,6 +531,56 @@ describe('loadEducationViews', () => {
 	});
 });
 
+describe('loadBalanceViews', () => {
+	it('joins the municipal split onto the shapes', async () => {
+		const views = await loadBalanceViews(populationGeometry);
+		const helsinki = views.finland.areas.find((a) => a.code === '091');
+
+		expect(helsinki?.womenShare).toBeGreaterThan(50);
+		expect(helsinki?.women).toBeGreaterThan(0);
+		expect(helsinki?.men).toBeGreaterThan(0);
+		expect(views.finland.period).toBe('2025');
+	});
+
+	it('rolls the Region tab up, because this export publishes no MK rows', async () => {
+		// 309 areas: the whole country and the 308 municipalities, and nothing in between — so
+		// unlike the age and education maps there is no published regional figure to read.
+		const views = await loadBalanceViews(populationGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+		const tampere = views.finland.areas.find((a) => a.code === '837');
+
+		// The fixture puts only Tampere in Pirkanmaa, so the roll-up must reproduce it exactly.
+		expect(pirkanmaa?.women).toBe(tampere?.women);
+		expect(pirkanmaa?.womenShare).toBeCloseTo(tampere?.womenShare as number, 10);
+	});
+
+	it('recomputes the share from summed counts rather than averaging shares', async () => {
+		const views = await loadBalanceViews(populationGeometry);
+		const total = views.tampere.total;
+
+		expect(total.womenShare).toBeCloseTo(
+			((total.women as number) / (total.population as number)) * 100,
+			10
+		);
+	});
+
+	it('keeps the whole country as the headline on Finland and Region', async () => {
+		const views = await loadBalanceViews(populationGeometry);
+
+		expect(views.finland.total.womenShare).toBeCloseTo(50.48, 2);
+		expect(views.maakunta.total.womenShare).toBe(views.finland.total.womenShare);
+	});
+
+	it('falls back to empty views when the export is missing', async () => {
+		install({ 'sex_register_kunnat_11re.json': new Response('', { status: 404 }) });
+
+		const views = await loadBalanceViews(populationGeometry);
+
+		expect(views.finland.period).toBe('');
+		expect(views.finland.areas.every((a) => a.womenShare === null)).toBe(true);
+	});
+});
+
 const ageGeometry: AgeGeometry = {
 	finland: map([
 		area('091', 'Helsinki', EMPTY_AGE_STATS),
@@ -623,7 +682,8 @@ describe('loadCompareViews', () => {
 			'people',
 			'income',
 			'education',
-			'age'
+			'age',
+			'balance'
 		]);
 	});
 
@@ -737,6 +797,29 @@ describe('loadCompareViews', () => {
 		expect(foglo?.score.score).toBeNull();
 	});
 
+	it('rolls the region balance up, since 11re publishes no MK rows', async () => {
+		// The second indicator that has to be derived rather than read — the population change is
+		// the other. It has to be pooled and *then* measured: averaging the members' distances
+		// from even would be a different number, since a male-leaning municipality and a
+		// female-leaning one partly cancel when their people are counted together.
+		const views = await loadCompareViews(compareGeometry);
+		const pirkanmaa = views.maakunta.areas.find((a) => a.code === '06');
+
+		const figure = (area: string, code: string) =>
+			Number(sex.data.find((r) => r.key[0] === area && r.key[1] === code)?.values[0]);
+		const members = compareGeometry.membersOf['06'];
+		const women = members.reduce((sum, m) => sum + figure(`KU${m}`, '2'), 0);
+		const people = members.reduce((sum, m) => sum + figure(`KU${m}`, 'SSS'), 0);
+
+		expect(pirkanmaa?.balance).toBeCloseTo(Math.abs((women / people) * 100 - 50), 10);
+	});
+
+	it('scores balance as a distance, so either sex leading is the same figure', async () => {
+		const views = await loadCompareViews(compareGeometry);
+
+		expect(views.finland.areas.every((a) => (a.balance ?? 0) >= 0)).toBe(true);
+	});
+
 	it('carries every period, since the tables are on independent cycles', async () => {
 		const views = await loadCompareViews(compareGeometry);
 
@@ -814,7 +897,8 @@ describe('the pre-fetch state', () => {
 			'People',
 			'Income',
 			'Education',
-			'Age'
+			'Age',
+			'Balance'
 		]);
 		expect(views.finland.areas[0].score.ranked).toBe(0);
 	});
@@ -826,6 +910,23 @@ describe('the pre-fetch state', () => {
 		expect(views.maakunta.total?.medianIncome).toBeNull();
 		// ...and none at all for the metro, before or after the fetch.
 		expect(views.tampere.total).toBeNull();
+	});
+
+	it('gives the sex map a headline shape and no reference figures to carry', () => {
+		// The only map whose scale pivots on a constant (50 %), so there is no countryX/medianX
+		// on its view at all — nothing has to be kept stable across tabs.
+		const views = emptyBalanceViews(populationGeometry);
+
+		expect(views.finland.total.womenShare).toBeNull();
+		expect(views.tampere.total.name).toBe('Tampere Metro');
+		expect(Object.keys(views.finland).sort()).toEqual([
+			'areas',
+			'period',
+			'polled',
+			'source',
+			'total',
+			'viewBox'
+		]);
 	});
 
 	it('gives the education map a headline shape on all three tabs', () => {

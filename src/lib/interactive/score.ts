@@ -55,6 +55,17 @@ export type ScorePart = {
 export type ScoreBreakdown = {
 	/** 0–100, or null when the area is below `MIN_COVERAGE`. */
 	score: number | null;
+	/**
+	 * Where that score sits among the other scored areas, 0–100 — **what the map colours by**.
+	 *
+	 * Not the same thing as `score`, and the difference is why this field exists. A score is the
+	 * mean of several percentile ranks, and a mean of ranks is not itself rank-distributed: it
+	 * clusters towards the middle, harder with every indicator added. Over the real exports the
+	 * top-10 % band held 9 municipalities with two indicators and **1** with six, so a class
+	 * labelled "top 10 %" was describing 0,3 % of the country. Ranking the score itself makes the
+	 * bands mean what they say by construction, whatever gets added next.
+	 */
+	scorePercentile: number | null;
 	/** 1 = best. Null whenever `score` is. */
 	rank: number | null;
 	/** How many areas got a score — the "of 308" the panel prints beside the rank. */
@@ -184,6 +195,7 @@ export function scoreAreas<A extends { code: string }>(
 			code: area.code,
 			breakdown: {
 				score: coverage >= MIN_COVERAGE && presentWeight ? weighted / presentWeight : null,
+				scorePercentile: null as number | null,
 				rank: null as number | null,
 				ranked: 0,
 				parts,
@@ -212,17 +224,32 @@ export function scoreAreas<A extends { code: string }>(
 	// says what they were measured against.
 	for (const entry of scored) entry.breakdown.ranked = ordered.length;
 
+	// One more ranking pass, over the scores themselves — see `scorePercentile`. Reuses the same
+	// tie and null handling as the per-indicator ranks, so 1st of 304 is exactly 100.
+	const spread = percentileRanks(
+		scored.map((entry) => entry.breakdown.score),
+		true
+	);
+
+	scored.forEach((entry, index) => {
+		entry.breakdown.scorePercentile = spread[index];
+	});
+
 	return new Map(scored.map((entry) => [entry.code, entry.breakdown]));
 }
 
 /**
  * A *diverging* scale around 50, reusing the site's shared green/grey/red so the colours mean
- * the same thing here as on the other two maps: green is the better direction.
+ * the same thing here as on the other maps: green is the better direction.
  *
- * 50 is a true midpoint here rather than a chosen one — with percentile-ranked inputs it is by
- * construction the middle of the distribution. The class edges are percentile bands (10 / 25 /
- * 45 / 55 / 75 / 90), so each class holds a known share of the areas instead of depending on how
- * the underlying figures happen to be spread.
+ * **These bands are applied to `scorePercentile`, not to `score`** — pass the wrong one and the
+ * labels start lying. The edges (10 / 25 / 45 / 55 / 75 / 90) are percentile bands, so against a
+ * percentile input each class holds a known share of the areas by construction: a tenth in each
+ * tail, a fifth either side of the middle. Against a raw score they do not, because a mean of
+ * ranks clusters towards the centre — that read 4/33/89/55/87/35/1 over the real six-indicator
+ * exports, with one municipality in a class named "top 10 %".
+ *
+ * 50 is a true midpoint either way: with percentile inputs it is the middle by construction.
  */
 export const SCORE_CLASSES = [
 	{ min: -Infinity, label: 'bottom 10 %', ...DIVERGING_SCALE.red[2] },
@@ -237,21 +264,27 @@ export const SCORE_CLASSES = [
 /** Index of the neutral, "about average" class. */
 const AVERAGE_CLASS = 3;
 
-function scoreClassIndex(score: number | null): number {
-	return score === null ? AVERAGE_CLASS : SCORE_CLASSES.findLastIndex((c) => score >= c.min);
+function scoreClassIndex(percentile: number | null): number {
+	return percentile === null
+		? AVERAGE_CLASS
+		: SCORE_CLASSES.findLastIndex((c) => percentile >= c.min);
 }
 
-/** Areas with no score are hatched, same as on both other maps — never given a flat grey. */
-export function scoreColorFor(score: number | null): string {
-	return score === null ? NO_DATA_COLOR : SCORE_CLASSES[scoreClassIndex(score)].color;
+/**
+ * Areas with no score are hatched, same as on every other map — never given a flat grey.
+ *
+ * @param percentile `ScoreBreakdown.scorePercentile`, not `score`.
+ */
+export function scoreColorFor(percentile: number | null): string {
+	return percentile === null ? NO_DATA_COLOR : SCORE_CLASSES[scoreClassIndex(percentile)].color;
 }
 
 /** "above average", "top 10 %" — the words the panel's chip puts on the colour. */
-export function scoreLabelFor(score: number | null): string {
-	return score === null ? 'no score' : SCORE_CLASSES[scoreClassIndex(score)].label;
+export function scoreLabelFor(percentile: number | null): string {
+	return percentile === null ? 'no score' : SCORE_CLASSES[scoreClassIndex(percentile)].label;
 }
 
 /** Text colour for a chip filled with that class's colour, measured per colour in the palette. */
-export function inkOnScore(score: number | null): string {
-	return SCORE_CLASSES[scoreClassIndex(score)].ink;
+export function inkOnScore(percentile: number | null): string {
+	return SCORE_CLASSES[scoreClassIndex(percentile)].ink;
 }
