@@ -3,18 +3,6 @@ test-results
 playwright-report
 node_modules
 
-# Statistics written by scripts/fetch_statfi.py on the production host, mounted into nginx.
-# The committed copy of the same files lives in static/data.
-/data
-
-# The refresh script's poll record. Not committed: its timestamp changes on every run, so it
-# would dirty the working tree even when no figures changed. Production gets its own from the
-# mounted directory; without one, the maps simply omit the "polled" date.
-/static/data/manifest.json
-
-# Python bytecode, left behind by running the fetch script or its tests
-__pycache__/
-
 # Output
 .output
 .vercel
